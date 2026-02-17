@@ -8,11 +8,18 @@
 
 <br><br>
 
-[![Version](https://img.shields.io/badge/version-1.0.0-00d4ff?style=for-the-badge&labelColor=0d1117)](https://github.com/avii-7/clawtbot)
-[![Python](https://img.shields.io/badge/python-3.11-3776ab?style=for-the-badge&logo=python&logoColor=white&labelColor=0d1117)](https://python.org)
-[![Next.js](https://img.shields.io/badge/next.js-15-000000?style=for-the-badge&logo=next.js&logoColor=white&labelColor=0d1117)](https://nextjs.org)
-[![FastAPI](https://img.shields.io/badge/fastapi-0.110-009688?style=for-the-badge&logo=fastapi&logoColor=white&labelColor=0d1117)](https://fastapi.tiangolo.com)
-[![License](https://img.shields.io/badge/license-MIT-7c3aed?style=for-the-badge&labelColor=0d1117)](LICENSE)
+<img src="docs/assets/badges/version-1.0.0.svg" alt="version 1.0.0">
+<img src="docs/assets/badges/python-3.11.svg" alt="python 3.11">
+<img src="docs/assets/badges/nextjs-16.1.6.svg" alt="next.js 16.1.6">
+<img src="docs/assets/badges/fastapi-0.115.6.svg" alt="fastapi 0.115.6">
+<img src="docs/assets/badges/license-mit.svg" alt="license MIT">
+
+<br>
+
+<img src="docs/assets/badges/docker-compose.svg" alt="docker compose">
+<img src="docs/assets/badges/postgresql-16.svg" alt="postgresql 16">
+<img src="docs/assets/badges/redis-7.svg" alt="redis 7">
+<img src="docs/assets/badges/celery-5.svg" alt="celery 5">
 
 **AI-Powered Social Media Automation with Multi-Agent Orchestration**
 
@@ -56,7 +63,7 @@ Bot:  मैं ClawtBot हूँ, Abhishek Singh (Avii) द्वारा ब
 | **v1.0.0** | Feb 2026 | 🎉 Initial release — Master Agent with 18 intents, multi-provider LLM support (Ollama, OpenAI, Gemini, Anthropic, Groq), content pipeline, engagement bot, analytics, full Next.js dashboard, Docker support, `clawtbot` CLI, one-line installer |
 | v0.9.0 | Feb 2026 | Master Agent identity, fallback protection, user memory & pattern tracking |
 | v0.8.0 | Feb 2026 | Brain Layer — LLM Router with provider abstraction, hot-swap models per agent |
-| v0.7.0 | Feb 2026 | Chat UI with voice input (Web Speech API), conversation persistence |
+| v0.7.0 | Feb 2026 | Chat UI with voice + image upload (drag/drop/paste), conversation persistence |
 | v0.6.0 | Feb 2026 | Configurable ports system — single `.env` source of truth |
 | v0.5.0 | Feb 2026 | Content pipeline — Creator → Hashtag → Review → Publish workflow |
 | v0.4.0 | Feb 2026 | Celery task queue for async content scheduling |
@@ -77,7 +84,7 @@ Bot:  मैं ClawtBot हूँ, Abhishek Singh (Avii) द्वारा ब
 - **18 intents** — from content creation to system configuration
 - **Multi-language** — responds in the same language you write in
 - **Identity-aware** — knows it's ClawtBot, built by Avii
-- **Voice input** — speak commands via Web Speech API
+- **Voice + image upload** — speak commands and drop/paste images into chat
 
 </td>
 <td width="50%">
@@ -177,13 +184,13 @@ Bot:  मैं ClawtBot हूँ, Abhishek Singh (Avii) द्वारा ब
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│                  Frontend (Next.js 15)                    │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌────────────┐  │
-│  │Dashboard │ │  Chat UI │ │ Content  │ │LLM Settings│  │
-│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └─────┬──────┘  │
-└───────┼─────────────┼───────────┼──────────────┼─────────┘
-        │             │           │              │
-        ▼             ▼           ▼              ▼
+│                  Frontend (Next.js 16)                    │
+│  ┌──────────┐ ┌──────────┐ ┌──────────────┐ ┌──────────┐ ┌────────────┐ │
+│  │ Landing  │ │Dashboard │ │Chat (V + Img)│ │ Content  │ │LLM Settings│ │
+│  └────┬─────┘ └────┬─────┘ └──────┬───────┘ └────┬─────┘ └─────┬──────┘ │
+└───────┼─────────────┼─────────────┼──────────────┼────────────┼─────────┘
+        │             │             │              │            │
+        ▼             ▼             ▼              ▼            ▼
 ┌──────────────────────────────────────────────────────────┐
 │                Backend (FastAPI + Python)                 │
 │                                                          │
@@ -242,7 +249,7 @@ curl -fsSL .../install.sh | bash -s -- --dir /opt/clawtbot
 
 ```bash
 # 1. Clone
-git clone https://github.com/avii-7/clawtbot.git
+git clone https://github.com/abhishekthatguy/clawtbot.git
 cd clawtbot
 
 # 2. Configure
@@ -266,7 +273,8 @@ Once running, open these in your browser:
 
 | Service | URL | Description |
 |:--------|:----|:------------|
-| 🌐 **Dashboard** | `http://localhost:3000` | Main web interface |
+| 🏠 **Landing** | `http://localhost:3000` | Marketing home page |
+| 🌐 **Dashboard** | `http://localhost:3000/dashboard` | Main web interface |
 | 🤖 **Master Agent Chat** | `http://localhost:3000/chat` | Chat with the AI |
 | 🔧 **API** | `http://localhost:8000` | Backend REST API |
 | 📚 **API Documentation** | `http://localhost:8000/docs` | Interactive Swagger UI |
@@ -320,7 +328,7 @@ clawtbot version            # Show version
 </td>
 <td>
 
-**Next.js 15** — React framework with App Router, TypeScript, Tailwind CSS, glassmorphism UI
+**Next.js 16** — React framework with App Router, TypeScript, Tailwind CSS, glassmorphism UI
 
 </td>
 </tr>
@@ -484,11 +492,16 @@ clawtbot/
 ├── workflow/                  # Content Pipeline
 │   └── pipeline.py            # Create → Hashtag → Review → Publish
 │
-├── frontend/                  # Next.js 15 Dashboard
+├── frontend/                  # Next.js 16 Web UI (Landing + Dashboard)
 │   └── src/
 │       ├── app/
-│       │   ├── page.tsx            # Dashboard
-│       │   ├── chat/page.tsx       # Master Agent chat UI
+│       │   ├── (landing)/page.tsx  # Landing page (/)
+│       │   ├── (landing)/about/    # About (/about)
+│       │   ├── (landing)/resources/ # Resources (/resources)
+│       │   ├── (landing)/privacy/  # Privacy (/privacy)
+│       │   ├── (landing)/terms/    # Terms (/terms)
+│       │   ├── dashboard/page.tsx  # Dashboard (/dashboard)
+│       │   ├── chat/page.tsx       # Master Agent chat (voice + image upload)
 │       │   ├── content/page.tsx    # Content management
 │       │   ├── llm-settings/      # LLM configuration
 │       │   └── (auth)/            # 🔐 Auth pages (no sidebar)
@@ -541,7 +554,7 @@ AI Enthusiast & Automation Architect
 
 *Building intelligent systems that automate the boring stuff.*
 
-[![GitHub](https://img.shields.io/badge/GitHub-avii--7-181717?style=flat-square&logo=github)](https://github.com/avii-7)
+<img src="docs/assets/badges/github-avii--7.svg" alt="GitHub avii-7">
 
 </td>
 </tr>
@@ -555,6 +568,6 @@ AI Enthusiast & Automation Architect
 
 **ClawtBot v1.0.0** — *Automate Everything.*
 
-Made with ❤️ and ☕ by [Abhishek Singh (Avii)](https://github.com/avii-7)
+Made with ❤️ and ☕ by [Abhishek Singh (Avii)](https://github.com/abhishekthatguy)
 
 </div>
