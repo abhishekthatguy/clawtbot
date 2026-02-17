@@ -554,7 +554,7 @@ AI Enthusiast & Automation Architect
 
 *Building intelligent systems that automate the boring stuff.*
 
-<img src="docs/assets/badges/github-avii--7.svg" alt="GitHub abhishekthatguy">
+<img src="docs/assets/badges/github-abhishekthatguy.svg" alt="GitHub abhishekthatguy">
 
 </td>
 </tr>
