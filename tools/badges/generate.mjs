@@ -27,7 +27,7 @@ const badges = [
 
   { filename: "typescript-5.x.svg", label: "typescript", message: "5.x", color: "#3178c6" },
   { filename: "tailwind-4.svg", label: "tailwind", message: "4", color: "#06b6d4" },
-  { filename: "github-avii--7.svg", label: "GitHub", message: "avii-7", color: "#181717", style: "flat-square" },
+  { filename: "github-avii--7.svg", label: "GitHub", message: "abhishekthatguy", color: "#181717", style: "flat-square" },
 ];
 
 async function main() {

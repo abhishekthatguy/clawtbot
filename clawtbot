@@ -393,7 +393,7 @@ cmd_help() {
     echo "  version             Show version"
     echo ""
     echo -e "${DIM}One-line install:${NC}"
-    echo "  curl -fsSL https://raw.githubusercontent.com/avii-7/clawtbot/main/install.sh | bash"
+    echo "  curl -fsSL https://raw.githubusercontent.com/abhishekthatguy/clawtbot/main/install.sh | bash"
     echo ""
 }
 

@@ -227,7 +227,7 @@ Bot:  मैं ClawtBot हूँ, Abhishek Singh (Avii) द्वारा ब
 ### One-Line Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/avii-7/clawtbot/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/abhishekthatguy/clawtbot/main/install.sh | bash
 ```
 
 This auto-detects your system, installs deps, and sets up everything.
@@ -554,7 +554,7 @@ AI Enthusiast & Automation Architect
 
 *Building intelligent systems that automate the boring stuff.*
 
-<img src="docs/assets/badges/github-avii--7.svg" alt="GitHub avii-7">
+<img src="docs/assets/badges/github-avii--7.svg" alt="GitHub abhishekthatguy">
 
 </td>
 </tr>

@@ -3,7 +3,7 @@
 # ClawtBot — One-Line Installer
 # Install ClawtBot on any system with a single command:
 #
-#   curl -fsSL https://raw.githubusercontent.com/avii-7/clawtbot/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/abhishekthatguy/clawtbot/main/install.sh | bash
 #
 # Modes:
 #   ... | bash                     # Auto-detect best method
@@ -15,7 +15,7 @@
 set -e
 
 # ─── Config ──────────────────────────────────────────────────────────────────
-REPO_URL="https://github.com/avii-7/clawtbot.git"
+REPO_URL="https://github.com/abhishekthatguy/clawtbot.git"
 INSTALL_DIR="${HOME}/clawtbot"
 MODE="auto"   # auto | docker | local
 BRANCH="main"
