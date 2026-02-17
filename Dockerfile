@@ -1,0 +1,46 @@
+# ─── Build Stage ─────────────────────────────────────────────────────────────
+FROM python:3.11-slim AS builder
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+
+# ─── Production Stage ────────────────────────────────────────────────────────
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy installed packages
+COPY --from=builder /install /usr/local
+
+# Copy application code
+COPY . .
+
+# Create non-root user
+RUN useradd -m -r clawtbot && chown -R clawtbot:clawtbot /app
+USER clawtbot
+
+# Port is configurable via BACKEND_PORT env var (default 8000)
+ARG BACKEND_PORT=8000
+ENV BACKEND_PORT=${BACKEND_PORT}
+EXPOSE ${BACKEND_PORT}
+
+# Health check uses the configured port
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:${BACKEND_PORT}/health || exit 1
+
+# Run with uvicorn on the configured port
+CMD uvicorn main:app --host 0.0.0.0 --port ${BACKEND_PORT}
