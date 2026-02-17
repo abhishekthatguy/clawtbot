@@ -562,6 +562,16 @@ AI Enthusiast & Automation Architect
 
 ---
 
+## Trademark Notice
+
+ClawtBot™ is a brand and product developed by Abhishek Singh.
+
+The name "ClawtBot", logo, and related branding assets are not covered under the MIT License.
+
+Brand assets are proprietary and may not be reused. See `BRAND_ASSETS_LICENSE.txt`.
+
+---
+
 <div align="center">
 
 <img src="docs/assets/logo.png" alt="ClawtBot" width="50">
