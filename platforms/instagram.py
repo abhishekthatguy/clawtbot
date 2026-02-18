@@ -17,10 +17,10 @@ GRAPH_API_BASE = "https://graph.facebook.com/v19.0"
 class InstagramClient(BasePlatform):
     """Instagram Graph API client for business accounts."""
 
-    def __init__(self):
+    def __init__(self, access_token: str = None, business_account_id: str = None):
         super().__init__("Instagram")
-        self.access_token = settings.instagram_access_token
-        self.account_id = settings.instagram_business_account_id
+        self.access_token = access_token or settings.instagram_access_token
+        self.account_id = business_account_id or settings.instagram_business_account_id
 
     async def publish(self, text: str, media_url: Optional[str] = None) -> str:
         """Publish a post to Instagram."""

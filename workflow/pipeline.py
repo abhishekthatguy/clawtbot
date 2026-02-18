@@ -7,6 +7,8 @@ import logging
 from typing import Any, Dict, Optional
 from uuid import UUID
 
+from celery import shared_task
+
 from agents.content_creator import ContentCreatorAgent
 from agents.hashtag_generator import HashtagGeneratorAgent
 from agents.review_agent import ReviewAgent
@@ -140,6 +142,7 @@ class ContentPipeline:
 
 
 # ─── Celery Task Wrapper ────────────────────────────────────────────────────
+@shared_task(name="workflow.pipeline.run_content_pipeline")
 def run_content_pipeline(topic: str, platform: str, tone: str, user_id: str = None):
     """Celery task entrypoint for the content pipeline."""
     import asyncio

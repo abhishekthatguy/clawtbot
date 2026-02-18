@@ -348,17 +348,62 @@ async def test_platform_credential(
     try:
         decrypted = decrypt_dict(cred.encrypted_credentials)
 
-        # Try to instantiate platform client and test
-        # For now, verify credentials are non-empty
-        has_values = all(bool(v) for v in decrypted.values())
-        if has_values:
-            cred.test_status = "connected"
-            await db.flush()
-            return {"status": "connected", "message": f"{platform_name} credentials look valid"}
+        # Actually test the connection using the real platform client
+        platform_client = None
+        try:
+            if platform_name == "facebook":
+                from platforms.facebook import FacebookClient
+                platform_client = FacebookClient(
+                    access_token=decrypted.get("access_token"),
+                    page_id=decrypted.get("page_id"),
+                )
+            elif platform_name == "instagram":
+                from platforms.instagram import InstagramClient
+                platform_client = InstagramClient(
+                    access_token=decrypted.get("access_token"),
+                    business_account_id=decrypted.get("business_account_id"),
+                )
+            elif platform_name == "twitter":
+                from platforms.twitter import TwitterClient
+                platform_client = TwitterClient(
+                    api_key=decrypted.get("api_key"),
+                    api_secret=decrypted.get("api_secret"),
+                    access_token=decrypted.get("access_token"),
+                    access_token_secret=decrypted.get("access_token_secret"),
+                    bearer_token=decrypted.get("bearer_token"),
+                )
+            elif platform_name == "youtube":
+                from platforms.youtube import YouTubeClient
+                platform_client = YouTubeClient(
+                    api_key=decrypted.get("api_key"),
+                    client_id=decrypted.get("client_id"),
+                    client_secret=decrypted.get("client_secret"),
+                    refresh_token=decrypted.get("refresh_token"),
+                )
+        except Exception as e:
+            logger.error(f"Failed to create {platform_name} client: {e}")
+
+        if platform_client:
+            is_connected = await platform_client.test_connection()
+            if is_connected:
+                cred.test_status = "connected"
+                await db.flush()
+                return {"status": "connected", "message": f"{platform_name} API connection successful! ✅"}
+            else:
+                cred.test_status = "failed"
+                await db.flush()
+                return {"status": "failed", "message": f"{platform_name} API returned an error. Check your credentials."}
         else:
-            cred.test_status = "failed"
-            await db.flush()
-            return {"status": "failed", "message": "Some credential fields are empty"}
+            # Fallback: just check if values are non-empty
+            has_values = all(bool(v) for v in decrypted.values())
+            if has_values:
+                cred.test_status = "connected"
+                await db.flush()
+                return {"status": "connected", "message": f"{platform_name} credentials saved (connection test not available)"}
+            else:
+                cred.test_status = "failed"
+                await db.flush()
+                return {"status": "failed", "message": "Some credential fields are empty"}
     except Exception as e:
         cred.test_status = "failed"
         await db.flush()

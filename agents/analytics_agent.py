@@ -7,6 +7,8 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, List
 
+from celery import shared_task
+
 from agents.base_agent import BaseAgent
 from brain.llm_router import get_llm
 from brain.prompts import ANALYTICS_SUMMARY_SYSTEM, ANALYTICS_SUMMARY_PROMPT
@@ -147,6 +149,7 @@ class AnalyticsAgent(BaseAgent):
 
 
 # ─── Celery Task ─────────────────────────────────────────────────────────────
+@shared_task(name="agents.analytics_agent.run_analytics")
 def run_analytics():
     """Celery task entrypoint for the Analytics Agent."""
     import asyncio

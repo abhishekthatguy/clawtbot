@@ -59,11 +59,47 @@ async def run_workflow(
         )
 
     except ConnectionError as e:
+        # Save failed content to DB so it shows in the Failed tab
+        try:
+            from db.database import async_session
+            from db.models import Content, ContentStatus, Platform as PlatformEnum
+            async with async_session() as session:
+                db_content = Content(
+                    topic=request.topic,
+                    platform=PlatformEnum(request.platform.lower()),
+                    tone=request.tone,
+                    status=ContentStatus.FAILED,
+                    review_feedback=f"Pipeline failed: {str(e)}",
+                    created_by=user.id,
+                )
+                session.add(db_content)
+                await session.commit()
+        except Exception:
+            pass  # Don't mask the original error
+
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"LLM service unavailable: {str(e)}",
+            detail=f"LLM service unavailable. Failed after 3 attempts. Please check that Ollama is running.",
         )
     except Exception as e:
+        # Save failed content to DB so it shows in the Failed tab
+        try:
+            from db.database import async_session
+            from db.models import Content, ContentStatus, Platform as PlatformEnum
+            async with async_session() as session:
+                db_content = Content(
+                    topic=request.topic,
+                    platform=PlatformEnum(request.platform.lower()),
+                    tone=request.tone,
+                    status=ContentStatus.FAILED,
+                    review_feedback=f"Pipeline failed: {str(e)}",
+                    created_by=user.id,
+                )
+                session.add(db_content)
+                await session.commit()
+        except Exception:
+            pass
+
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Pipeline failed: {str(e)}",

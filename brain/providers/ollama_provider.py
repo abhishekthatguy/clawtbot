@@ -11,8 +11,8 @@ from brain.providers import BaseLLMProvider
 
 logger = logging.getLogger(__name__)
 
-REQUEST_TIMEOUT = 60.0
-MAX_RETRIES = 2
+REQUEST_TIMEOUT = 120.0
+MAX_RETRIES = 3
 
 
 class OllamaProvider(BaseLLMProvider):

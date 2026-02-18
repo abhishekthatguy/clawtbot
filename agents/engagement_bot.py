@@ -7,6 +7,8 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List
 
+from celery import shared_task
+
 from agents.base_agent import BaseAgent
 from brain.llm_router import get_llm
 from brain.prompts import ENGAGEMENT_REPLY_SYSTEM, ENGAGEMENT_REPLY_PROMPT
@@ -159,6 +161,7 @@ class EngagementBot(BaseAgent):
 
 
 # ─── Celery Task ─────────────────────────────────────────────────────────────
+@shared_task(name="agents.engagement_bot.run_engagement_check")
 def run_engagement_check(content_id: str, platform: str, post_id: str):
     """Celery task entrypoint for the Engagement Bot."""
     import asyncio

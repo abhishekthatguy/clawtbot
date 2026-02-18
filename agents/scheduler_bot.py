@@ -8,6 +8,7 @@ import logging
 from datetime import datetime
 from typing import Any, Dict
 
+from celery import shared_task
 from agents.base_agent import BaseAgent
 
 logger = logging.getLogger(__name__)
@@ -80,6 +81,7 @@ class SchedulerBot(BaseAgent):
 
 
 # ─── Celery Task ─────────────────────────────────────────────────────────────
+@shared_task(name="agents.scheduler_bot.run_scheduler")
 def run_scheduler():
     """Celery task entrypoint for the Scheduler Bot."""
     import asyncio

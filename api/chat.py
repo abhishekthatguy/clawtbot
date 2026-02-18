@@ -1,6 +1,9 @@
 """
 ClawtBot — Chat API Routes
 Natural language interface to the Master Agent.
+Supports both authenticated and guest users.
+Guest users can chat freely but actions (workflows, settings, etc.)
+will prompt them to log in first.
 """
 
 import uuid
@@ -12,7 +15,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from auth.dependencies import get_current_user
+from auth.dependencies import get_current_user, get_optional_user
 from auth.models import User
 from db.database import get_db
 from db.settings_models import ChatMessage
@@ -21,6 +24,8 @@ from agents.master_agent import MasterAgent
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
 master_agent = MasterAgent()
+
+GUEST_USER_ID = "guest"
 
 
 # ─── Schemas ────────────────────────────────────────────────────────────────
@@ -44,14 +49,21 @@ class ChatResponse(BaseModel):
 async def send_chat_message(
     req: ChatRequest,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: Optional[User] = Depends(get_optional_user),
 ):
-    """Send a message to the Master Agent and get a response."""
+    """
+    Send a message to the Master Agent and get a response.
+    Works for both authenticated and guest users.
+    Guest users can chat freely, but action intents (workflows,
+    settings changes, etc.) will prompt them to log in.
+    """
+    is_authenticated = user is not None
+    user_id = str(user.id) if user else GUEST_USER_ID
     conv_id = req.conversation_id or str(uuid.uuid4())
 
-    # Load conversation history
+    # Load conversation history (only for authenticated users)
     history = []
-    if req.conversation_id:
+    if req.conversation_id and is_authenticated:
         result = await db.execute(
             select(ChatMessage)
             .where(ChatMessage.conversation_id == conv_id)
@@ -60,22 +72,24 @@ async def send_chat_message(
         messages = result.scalars().all()
         history = [{"role": m.role, "content": m.content} for m in messages]
 
-    # Save user message
-    user_msg = ChatMessage(
-        conversation_id=conv_id,
-        user_id=str(user.id),
-        role="user",
-        content=req.message,
-    )
-    db.add(user_msg)
-    await db.flush()
+    # Save user message (only for authenticated users)
+    if is_authenticated:
+        user_msg = ChatMessage(
+            conversation_id=conv_id,
+            user_id=user_id,
+            role="user",
+            content=req.message,
+        )
+        db.add(user_msg)
+        await db.flush()
 
     # Process through Master Agent
     try:
         result = await master_agent.chat(
             message=req.message,
-            user_id=str(user.id),
+            user_id=user_id,
             conversation_history=history,
+            is_authenticated=is_authenticated,
         )
     except Exception as e:
         import logging
@@ -91,16 +105,17 @@ async def send_chat_message(
             "action_data": None,
         }
 
-    # Save assistant response
-    assistant_msg = ChatMessage(
-        conversation_id=conv_id,
-        user_id=str(user.id),
-        role="assistant",
-        content=result["response"],
-        intent=result.get("intent"),
-    )
-    db.add(assistant_msg)
-    await db.commit()
+    # Save assistant response (only for authenticated users)
+    if is_authenticated:
+        assistant_msg = ChatMessage(
+            conversation_id=conv_id,
+            user_id=user_id,
+            role="assistant",
+            content=result["response"],
+            intent=result.get("intent"),
+        )
+        db.add(assistant_msg)
+        await db.commit()
 
     return ChatResponse(
         conversation_id=conv_id,

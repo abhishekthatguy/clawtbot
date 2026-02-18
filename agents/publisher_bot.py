@@ -59,7 +59,7 @@ class PublisherBot(BaseAgent):
 
                     try:
                         # Get the platform client and publish
-                        platform_client = self._get_platform_client(schedule.platform.value)
+                        platform_client = await self._get_platform_client(schedule.platform.value)
 
                         if platform_client is None:
                             self.logger.warning(
@@ -145,22 +145,57 @@ class PublisherBot(BaseAgent):
         self.log_complete(output)
         return output
 
-    def _get_platform_client(self, platform: str):
-        """Get the platform API client, returns None if not configured."""
-        from config import settings
+    async def _get_platform_client(self, platform: str):
+        """
+        Get the platform API client.
+        Loads credentials from DB (Settings UI) first, then falls back to .env.
+        Returns None if no credentials are found.
+        """
+        from utils.credential_loader import get_platform_credentials
 
-        if platform == "instagram" and settings.is_instagram_configured:
-            from platforms.instagram import InstagramClient
-            return InstagramClient()
-        elif platform == "facebook" and settings.is_facebook_configured:
+        creds = await get_platform_credentials(platform)
+        if not creds:
+            self.logger.warning(f"No credentials found for {platform} (checked DB + .env)")
+            return None
+
+        if platform == "facebook":
             from platforms.facebook import FacebookClient
-            return FacebookClient()
-        elif platform == "twitter" and settings.is_twitter_configured:
+            if creds.get("access_token") and creds.get("page_id"):
+                return FacebookClient(
+                    access_token=creds["access_token"],
+                    page_id=creds["page_id"],
+                )
+
+        elif platform == "instagram":
+            from platforms.instagram import InstagramClient
+            if creds.get("access_token") and creds.get("business_account_id"):
+                return InstagramClient(
+                    access_token=creds["access_token"],
+                    business_account_id=creds["business_account_id"],
+                )
+
+        elif platform == "twitter":
             from platforms.twitter import TwitterClient
-            return TwitterClient()
-        elif platform == "youtube" and settings.is_youtube_configured:
+            if creds.get("api_key") and creds.get("api_secret"):
+                return TwitterClient(
+                    api_key=creds.get("api_key"),
+                    api_secret=creds.get("api_secret"),
+                    access_token=creds.get("access_token"),
+                    access_token_secret=creds.get("access_token_secret"),
+                    bearer_token=creds.get("bearer_token"),
+                )
+
+        elif platform == "youtube":
             from platforms.youtube import YouTubeClient
-            return YouTubeClient()
+            if creds.get("api_key"):
+                return YouTubeClient(
+                    api_key=creds.get("api_key"),
+                    client_id=creds.get("client_id"),
+                    client_secret=creds.get("client_secret"),
+                    refresh_token=creds.get("refresh_token"),
+                )
+
+        self.logger.warning(f"Credentials found for {platform} but required keys are missing")
         return None
 
     def _queue_engagement_check(self, content_id: str, platform: str, post_id: str):

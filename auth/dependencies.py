@@ -61,3 +61,41 @@ async def get_current_user(
             detail="Inactive user",
         )
     return user
+
+
+from typing import Optional
+
+
+async def get_optional_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db),
+) -> Optional[User]:
+    """
+    Return the authenticated user if a valid token is present,
+    or None if no token / invalid token. Never raises 401.
+    Used for public endpoints that optionally use auth context.
+    """
+    if credentials is None:
+        return None
+
+    try:
+        payload = jwt.decode(
+            credentials.credentials,
+            settings.jwt_secret_key,
+            algorithms=[settings.jwt_algorithm],
+        )
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            return None
+        token_data = TokenData(user_id=user_id)
+    except JWTError:
+        return None
+
+    result = await db.execute(
+        select(User).where(User.id == token_data.user_id)
+    )
+    user = result.scalar_one_or_none()
+
+    if user is None or not user.is_active:
+        return None
+    return user

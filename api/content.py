@@ -15,12 +15,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from auth.dependencies import get_current_user
 from auth.models import User
 from db.database import get_db
-from db.models import Content, ContentStatus
+from db.models import Content, ContentStatus, Schedule, Platform as PlatformEnum
 
 router = APIRouter(prefix="/content", tags=["Content"])
 
 
-# ─── Response Schemas ────────────────────────────────────────────────────────
+# ─── Request / Response Schemas ──────────────────────────────────────────────
 
 class ContentResponse(BaseModel):
     id: UUID
@@ -45,6 +45,16 @@ class ContentResponse(BaseModel):
 class ContentListResponse(BaseModel):
     total: int
     items: List[ContentResponse]
+
+
+class UpdateContentRequest(BaseModel):
+    caption: Optional[str] = None
+    hook: Optional[str] = None
+    cta: Optional[str] = None
+    post_text: Optional[str] = None
+    improved_text: Optional[str] = None
+    topic: Optional[str] = None
+    tone: Optional[str] = None
 
 
 # ─── Routes ──────────────────────────────────────────────────────────────────
@@ -140,8 +150,156 @@ async def reject_content(
 
     content.status = ContentStatus.DRAFT
     content.updated_at = datetime.utcnow()
+    await db.flush()
 
     return {"status": "success", "message": "Content rejected and set to draft"}
+
+
+@router.patch("/{content_id}/edit", response_model=ContentResponse)
+async def edit_content(
+    content_id: UUID,
+    update: UpdateContentRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Edit a draft content item."""
+    result = await db.execute(select(Content).where(Content.id == content_id))
+    content = result.scalar_one_or_none()
+
+    if not content:
+        raise HTTPException(status_code=404, detail="Content not found")
+
+    if content.status not in (ContentStatus.DRAFT, ContentStatus.REVIEWED):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot edit content with status '{content.status.value}'. Only draft/reviewed content can be edited.",
+        )
+
+    # Apply updates
+    for field, value in update.model_dump(exclude_unset=True).items():
+        if value is not None:
+            setattr(content, field, value)
+
+    content.updated_at = datetime.utcnow()
+    await db.flush()
+    await db.refresh(content)
+
+    return ContentResponse.model_validate(content)
+
+
+@router.post("/{content_id}/publish-now")
+async def publish_now(
+    content_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Immediately publish approved content to its platform."""
+    result = await db.execute(select(Content).where(Content.id == content_id))
+    content = result.scalar_one_or_none()
+
+    if not content:
+        raise HTTPException(status_code=404, detail="Content not found")
+
+    if content.status != ContentStatus.APPROVED:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Content must be approved before publishing. Current status: {content.status.value}",
+        )
+
+    # Build full text
+    post_text = content.improved_text or content.post_text or content.caption or ""
+    hashtags = ""
+    if content.niche_hashtags:
+        hashtags += " ".join(content.niche_hashtags)
+    if content.broad_hashtags:
+        hashtags += " " + " ".join(content.broad_hashtags)
+    full_text = f"{post_text}\n\n{hashtags}".strip()
+
+    platform_name = content.platform.value if hasattr(content.platform, 'value') else content.platform
+
+    # Get platform client with credentials from DB
+    from utils.credential_loader import get_platform_credentials
+
+    creds = await get_platform_credentials(platform_name)
+    if not creds:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No credentials configured for {platform_name}. Please add them in Settings → Platforms.",
+        )
+
+    # Create the platform client
+    platform_client = None
+    if platform_name == "facebook":
+        from platforms.facebook import FacebookClient
+        if creds.get("access_token") and creds.get("page_id"):
+            platform_client = FacebookClient(
+                access_token=creds["access_token"],
+                page_id=creds["page_id"],
+            )
+    elif platform_name == "instagram":
+        from platforms.instagram import InstagramClient
+        if creds.get("access_token") and creds.get("business_account_id"):
+            platform_client = InstagramClient(
+                access_token=creds["access_token"],
+                business_account_id=creds["business_account_id"],
+            )
+    elif platform_name == "twitter":
+        from platforms.twitter import TwitterClient
+        if creds.get("api_key") and creds.get("api_secret"):
+            platform_client = TwitterClient(**creds)
+    elif platform_name == "youtube":
+        from platforms.youtube import YouTubeClient
+        if creds.get("api_key"):
+            platform_client = YouTubeClient(**creds)
+
+    if not platform_client:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Required credential keys are missing for {platform_name}.",
+        )
+
+    try:
+        post_id = await platform_client.publish(text=full_text)
+
+        # Create schedule record
+        schedule = Schedule(
+            content_id=content.id,
+            platform=PlatformEnum(platform_name),
+            scheduled_at=datetime.utcnow(),
+            published_at=datetime.utcnow(),
+            is_published=True,
+            platform_post_id=post_id,
+        )
+        db.add(schedule)
+
+        # Update content status
+        content.status = ContentStatus.PUBLISHED
+        content.updated_at = datetime.utcnow()
+        await db.flush()
+
+        return {
+            "status": "success",
+            "message": f"Published to {platform_name} successfully!",
+            "post_id": post_id,
+        }
+
+    except Exception as e:
+        # Must use a separate session to commit FAILED status,
+        # because raising HTTPException will cause get_db() to rollback the main session
+        from db.database import async_session as session_factory
+        async with session_factory() as fail_session:
+            from sqlalchemy import update
+            await fail_session.execute(
+                update(Content)
+                .where(Content.id == content_id)
+                .values(status=ContentStatus.FAILED, updated_at=datetime.utcnow())
+            )
+            await fail_session.commit()
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to publish to {platform_name}: {str(e)}",
+        )
 
 
 @router.delete("/{content_id}")
@@ -159,3 +317,4 @@ async def delete_content(
 
     await db.delete(content)
     return {"status": "success", "message": "Content deleted"}
+

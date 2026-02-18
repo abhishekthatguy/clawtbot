@@ -17,13 +17,20 @@ TWITTER_API_BASE = "https://api.twitter.com/2"
 class TwitterClient(BasePlatform):
     """Twitter/X API v2 client."""
 
-    def __init__(self):
+    def __init__(
+        self,
+        api_key: str = None,
+        api_secret: str = None,
+        access_token: str = None,
+        access_token_secret: str = None,
+        bearer_token: str = None,
+    ):
         super().__init__("Twitter")
-        self.bearer_token = settings.twitter_bearer_token
-        self.api_key = settings.twitter_api_key
-        self.api_secret = settings.twitter_api_secret
-        self.access_token = settings.twitter_access_token
-        self.access_token_secret = settings.twitter_access_token_secret
+        self.bearer_token = bearer_token or settings.twitter_bearer_token
+        self.api_key = api_key or settings.twitter_api_key
+        self.api_secret = api_secret or settings.twitter_api_secret
+        self.access_token = access_token or settings.twitter_access_token
+        self.access_token_secret = access_token_secret or settings.twitter_access_token_secret
 
     def _get_headers(self) -> Dict[str, str]:
         return {

@@ -17,9 +17,9 @@ YOUTUBE_API_BASE = "https://www.googleapis.com/youtube/v3"
 class YouTubeClient(BasePlatform):
     """YouTube Data API v3 client."""
 
-    def __init__(self):
+    def __init__(self, api_key: str = None, client_id: str = None, client_secret: str = None, refresh_token: str = None):
         super().__init__("YouTube")
-        self.api_key = settings.youtube_api_key
+        self.api_key = api_key or settings.youtube_api_key
         self.access_token = None  # Set via OAuth flow if needed
 
     async def publish(self, text: str, media_url: Optional[str] = None) -> str:

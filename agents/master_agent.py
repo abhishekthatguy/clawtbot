@@ -821,11 +821,15 @@ class MasterAgent:
 
     # ── Main chat method ──────────────────────────────────────────────
 
+    # Intents that are allowed for unauthenticated (guest) users
+    GUEST_ALLOWED_INTENTS = {"general_chat", "introduce", "help"}
+
     async def chat(
         self,
         message: str,
         user_id: str,
         conversation_history: Optional[List[Dict[str, str]]] = None,
+        is_authenticated: bool = True,
     ) -> Dict[str, Any]:
         """
         Process a user message through the Master Agent.
@@ -835,9 +839,10 @@ class MasterAgent:
         2. Build context from memory + history
         3. Call LLM with fallback chain
         4. If total LLM failure → respond with default intro
-        5. Execute the action via ActionExecutor
-        6. Record interaction in user memory
-        7. Return the natural-language response + execution result
+        5. Check auth gate: if guest + action intent → ask to login
+        6. Execute the action via ActionExecutor
+        7. Record interaction in user memory
+        8. Return the natural-language response + execution result
         """
         self.logger.info(f"Master Agent received: {message[:100]}...")
 
@@ -929,7 +934,23 @@ Respond ONLY with valid JSON matching the schema from your instructions."""
 
         self.logger.info(f"Classified intent: {intent}, params: {list(params.keys())}")
 
-        # ── Step 5: Execute the action ───────────────────────────────
+        # ── Step 5: Auth gate for guest users ────────────────────────
+        if not is_authenticated and intent not in self.GUEST_ALLOWED_INTENTS:
+            self.logger.info(f"Guest user attempted action intent '{intent}' — asking to login")
+            user_memory.record_interaction(user_id, intent, message, params)
+            return {
+                "intent": intent,
+                "response": (
+                    "🔒 To perform this action, you need to be logged in.\n\n"
+                    "Please **sign in** or **create an account** first, "
+                    "and then I can help you with that!\n\n"
+                    "You can still chat with me freely without logging in. 😊"
+                ),
+                "action_success": False,
+                "action_data": {"requires_login": True},
+            }
+
+        # ── Step 6: Execute the action ───────────────────────────────
         executor = ActionExecutor(user_id=user_id)
         action_result = await executor.execute(intent, params)
 
@@ -951,7 +972,7 @@ Respond ONLY with valid JSON matching the schema from your instructions."""
 
             llm_response = enriched
 
-        # ── Step 6: Record in memory ─────────────────────────────────
+        # ── Step 7: Record in memory ─────────────────────────────────
         user_memory.record_interaction(user_id, intent, message, params)
 
         return {
