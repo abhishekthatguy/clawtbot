@@ -3,7 +3,7 @@ FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies for building
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
@@ -29,6 +29,9 @@ COPY --from=builder /install /usr/local
 # Copy application code
 COPY . .
 
+# Make entrypoint executable
+RUN chmod +x scripts/entrypoint.sh
+
 # Create non-root user
 RUN useradd -m -r clawtbot && chown -R clawtbot:clawtbot /app
 USER clawtbot
@@ -39,8 +42,9 @@ ENV BACKEND_PORT=${BACKEND_PORT}
 EXPOSE ${BACKEND_PORT}
 
 # Health check uses the configured port
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:${BACKEND_PORT}/health || exit 1
 
-# Run with uvicorn on the configured port
-CMD uvicorn main:app --host 0.0.0.0 --port ${BACKEND_PORT}
+# Use entrypoint for migrations, then run uvicorn
+ENTRYPOINT ["scripts/entrypoint.sh"]
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${BACKEND_PORT} --workers 4"]

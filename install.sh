@@ -7,7 +7,8 @@
 #
 # Modes:
 #   ... | bash                     # Auto-detect best method
-#   ... | bash -s -- --docker      # Force Docker Compose install
+#   ... | bash -s -- --docker      # Force Docker Compose (development)
+#   ... | bash -s -- --production  # Force Docker Compose (production)
 #   ... | bash -s -- --local       # Force local (Python + Node) install
 #   ... | bash -s -- --dir /path   # Custom install directory
 # ─────────────────────────────────────────────────────────────────────────────
@@ -16,9 +17,10 @@ set -e
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 REPO_URL="https://github.com/abhishekthatguy/clawtbot.git"
-INSTALL_DIR="${HOME}/clawtbot"
-MODE="auto"   # auto | docker | local
+INSTALL_DIR="${HOME}/projects/clawtbot"
+MODE="auto"   # auto | docker | production | local
 BRANCH="main"
+DOMAIN="clawtbot.abhishekthatguy.in"
 
 # Colors
 RED='\033[0;31m'
@@ -36,11 +38,14 @@ log_err()  { echo -e "${RED}[ClawtBot]${NC} $1"; }
 # ─── Parse args ──────────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --docker)  MODE="docker"; shift ;;
-        --local)   MODE="local"; shift ;;
-        --dir)     INSTALL_DIR="$2"; shift 2 ;;
-        --branch)  BRANCH="$2"; shift 2 ;;
-        *)         shift ;;
+        --docker)      MODE="docker"; shift ;;
+        --production)  MODE="production"; shift ;;
+        --prod)        MODE="production"; shift ;;
+        --local)       MODE="local"; shift ;;
+        --dir)         INSTALL_DIR="$2"; shift 2 ;;
+        --branch)      BRANCH="$2"; shift 2 ;;
+        --domain)      DOMAIN="$2"; shift 2 ;;
+        *)             shift ;;
     esac
 done
 
@@ -124,10 +129,22 @@ if ! $HAS_GIT; then
     exit 1
 fi
 
-if [ "$MODE" = "docker" ] && ! $HAS_DOCKER; then
-    log_err "Docker mode selected but Docker is not installed."
-    log_err "Install Docker: https://docs.docker.com/get-docker/"
-    exit 1
+if [ "$MODE" = "docker" ] || [ "$MODE" = "production" ]; then
+    if ! $HAS_DOCKER; then
+        log_err "Docker mode selected but Docker is not installed."
+        log_err "Install Docker: https://docs.docker.com/get-docker/"
+        exit 1
+    fi
+    if ! docker info &>/dev/null 2>&1; then
+        log_err "Docker is installed but not running. Start Docker first."
+        exit 1
+    fi
+    # Check docker compose
+    if ! docker compose version &>/dev/null 2>&1; then
+        log_err "Docker Compose V2 is required but not available."
+        log_err "Update Docker or install docker-compose-plugin."
+        exit 1
+    fi
 fi
 
 if [ "$MODE" = "local" ]; then
@@ -145,43 +162,168 @@ fi
 # Step 1: Clone Repository
 # ═════════════════════════════════════════════════════════════════════════════
 
-if [ -d "$INSTALL_DIR" ]; then
+# Ensure parent directory exists
+PARENT_DIR="$(dirname "$INSTALL_DIR")"
+if [ ! -d "$PARENT_DIR" ]; then
+    log "Creating directory ${PARENT_DIR}..."
+    mkdir -p "$PARENT_DIR"
+fi
+
+if [ -d "$INSTALL_DIR/.git" ]; then
     log "Directory $INSTALL_DIR already exists."
     log "Updating with git pull..."
     cd "$INSTALL_DIR"
     git pull origin "$BRANCH" 2>/dev/null || true
 else
+    if [ -d "$INSTALL_DIR" ] && [ "$(ls -A "$INSTALL_DIR" 2>/dev/null)" ]; then
+        log_warn "Directory $INSTALL_DIR exists but is not a git repo."
+        log_warn "Backing up to ${INSTALL_DIR}.bak..."
+        mv "$INSTALL_DIR" "${INSTALL_DIR}.bak.$(date +%s)"
+    fi
     log "Cloning ClawtBot into ${INSTALL_DIR}..."
     git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR"
     cd "$INSTALL_DIR"
 fi
 
+log_ok "  ✓ Repository ready at ${INSTALL_DIR}"
+echo ""
+
 # ═════════════════════════════════════════════════════════════════════════════
-# Step 2: Setup .env
+# Step 2: Generate Secrets & Setup Environment
 # ═════════════════════════════════════════════════════════════════════════════
 
-if [ ! -f .env ]; then
-    log "Creating .env from template..."
-    cp .env.example .env
+generate_secret() {
+    # Generate a secure random string (64 chars)
+    python3 -c "import secrets; print(secrets.token_hex(32))" 2>/dev/null || \
+        openssl rand -hex 32 2>/dev/null || \
+        head -c 64 /dev/urandom | base64 | tr -d '=/+' | head -c 64
+}
 
-    # Generate a random JWT secret
-    JWT_SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))" 2>/dev/null || openssl rand -hex 32 2>/dev/null || echo "change-this-in-production-$(date +%s)")
-    if [[ "$OS" == "macos" ]]; then
-        sed -i '' "s/your-super-secret-jwt-key-change-this-in-production/${JWT_SECRET}/" .env
+if [ "$MODE" = "production" ]; then
+    # ── Production: create .env.production if missing ──────────────────
+    if [ ! -f .env.production ]; then
+        log "Creating .env.production with secure secrets..."
+
+        POSTGRES_PASS=$(generate_secret)
+        REDIS_PASS=$(generate_secret)
+        JWT_SECRET=$(generate_secret)
+
+        cp .env.example .env.production
+
+        # Apply production overrides
+        if [[ "$OS" == "macos" ]]; then
+            SED_I="sed -i ''"
+        else
+            SED_I="sed -i"
+        fi
+
+        # Database
+        $SED_I "s|POSTGRES_USER=clawtbot_user|POSTGRES_USER=clawtbot_prod|" .env.production
+        $SED_I "s|POSTGRES_PASSWORD=your_secure_password_here|POSTGRES_PASSWORD=${POSTGRES_PASS}|" .env.production
+        $SED_I "s|POSTGRES_DB=clawtbot_db|POSTGRES_DB=clawtbot_production|" .env.production
+        $SED_I "s|DATABASE_URL=postgresql+asyncpg://clawtbot_user:your_secure_password_here@localhost:5432/clawtbot_db|DATABASE_URL=postgresql+asyncpg://clawtbot_prod:${POSTGRES_PASS}@postgres:5432/clawtbot_production|" .env.production
+        $SED_I "s|DATABASE_URL_SYNC=postgresql://clawtbot_user:your_secure_password_here@localhost:5432/clawtbot_db|DATABASE_URL_SYNC=postgresql://clawtbot_prod:${POSTGRES_PASS}@postgres:5432/clawtbot_production|" .env.production
+
+        # Redis
+        $SED_I "s|REDIS_URL=redis://localhost:6379/0|REDIS_URL=redis://:${REDIS_PASS}@redis:6379/0|" .env.production
+
+        # Add REDIS_PASSWORD if not present
+        if ! grep -q "REDIS_PASSWORD" .env.production; then
+            echo "REDIS_PASSWORD=${REDIS_PASS}" >> .env.production
+        fi
+
+        # JWT
+        $SED_I "s|JWT_SECRET_KEY=your-super-secret-jwt-key-change-this-in-production|JWT_SECRET_KEY=${JWT_SECRET}|" .env.production
+
+        # JWT expiry (shorter for production)
+        $SED_I "s|JWT_ACCESS_TOKEN_EXPIRE_MINUTES=1440|JWT_ACCESS_TOKEN_EXPIRE_MINUTES=60|" .env.production
+
+        # Ollama (Docker hostname)
+        $SED_I "s|OLLAMA_HOST=http://localhost:11434|OLLAMA_HOST=http://ollama:11434|" .env.production
+
+        # Frontend API URL
+        $SED_I "s|NEXT_PUBLIC_API_URL=http://localhost:8000|NEXT_PUBLIC_API_URL=https://api.${DOMAIN}|" .env.production
+
+        # Application settings
+        $SED_I "s|APP_ENV=development|APP_ENV=production|" .env.production
+        $SED_I "s|APP_DEBUG=true|APP_DEBUG=false|" .env.production
+        $SED_I "s|LOG_LEVEL=INFO|LOG_LEVEL=WARNING|" .env.production
+        $SED_I "s|CORS_ORIGINS=http://localhost:3000,http://localhost:8000|CORS_ORIGINS=https://${DOMAIN},https://api.${DOMAIN}|" .env.production
+
+        log_ok "  ✓ .env.production created with secure secrets"
+        log_ok "  ✓ Postgres password: ${POSTGRES_PASS:0:8}..."
+        log_ok "  ✓ Redis password:    ${REDIS_PASS:0:8}..."
+        log_ok "  ✓ JWT secret:        ${JWT_SECRET:0:8}..."
     else
-        sed -i "s/your-super-secret-jwt-key-change-this-in-production/${JWT_SECRET}/" .env
+        log_ok "  ✓ .env.production already exists — keeping current config"
     fi
-    log_ok "  ✓ .env created with secure JWT secret"
 else
-    log_ok "  ✓ .env already exists — keeping current config"
+    # ── Development: create .env if missing ────────────────────────────
+    if [ ! -f .env ]; then
+        log "Creating .env from template..."
+        cp .env.example .env
+
+        JWT_SECRET=$(generate_secret)
+        if [[ "$OS" == "macos" ]]; then
+            sed -i '' "s/your-super-secret-jwt-key-change-this-in-production/${JWT_SECRET}/" .env
+        else
+            sed -i "s/your-super-secret-jwt-key-change-this-in-production/${JWT_SECRET}/" .env
+        fi
+        log_ok "  ✓ .env created with secure JWT secret"
+    else
+        log_ok "  ✓ .env already exists — keeping current config"
+    fi
+fi
+
+echo ""
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Step 3A: Production Docker Install
+# ═════════════════════════════════════════════════════════════════════════════
+
+if [ "$MODE" = "production" ]; then
+    log "Starting ${BOLD}PRODUCTION${NC} deployment..."
+    echo ""
+
+    # Ensure nginx dirs exist
+    mkdir -p nginx/ssl nginx/conf.d
+
+    # Build and start via production compose
+    log "Building and starting production services..."
+    docker compose -f docker-compose.prod.yml --env-file .env.production up --build -d
+
+    echo ""
+    log_ok "═══════════════════════════════════════════════════"
+    log_ok "  ClawtBot is running in PRODUCTION! 🚀"
+    log_ok "═══════════════════════════════════════════════════"
+    echo ""
+    log "  🌐 Frontend:    http://${DOMAIN} (configure DNS → server IP)"
+    log "  🔧 Backend API: https://api.${DOMAIN}"
+    log "  📚 API Docs:    http://$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'SERVER_IP')/docs"
+    log "  ❤️  Health:      http://$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'SERVER_IP')/health"
+    echo ""
+    log "  📊 Management:"
+    echo "    ./scripts/deploy-prod.sh status      # Service status"
+    echo "    ./scripts/deploy-prod.sh logs         # View logs"
+    echo "    ./scripts/deploy-prod.sh logs app     # Backend logs only"
+    echo "    ./scripts/deploy-prod.sh backup       # Database backup"
+    echo "    ./scripts/deploy-prod.sh restart      # Restart all"
+    echo ""
+    log "  ⚠️  Next Steps:"
+    echo "    1. Point DNS A record for ${DOMAIN} → your server IP"
+    echo "    2. Point DNS A record for api.${DOMAIN} → your server IP"
+    echo "    3. Install SSL certs (Let's Encrypt):"
+    echo "       sudo certbot certonly --standalone -d ${DOMAIN} -d api.${DOMAIN}"
+    echo "    4. Copy certs to nginx/ssl/ and uncomment HTTPS in nginx.conf"
+    echo ""
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════
-# Step 3A: Docker Install
+# Step 3B: Docker Development Install
 # ═════════════════════════════════════════════════════════════════════════════
 
 if [ "$MODE" = "docker" ]; then
-    log "Building and starting via Docker Compose..."
+    log "Building and starting via Docker Compose (development)..."
     echo ""
 
     docker compose up --build -d
@@ -204,7 +346,7 @@ if [ "$MODE" = "docker" ]; then
 fi
 
 # ═════════════════════════════════════════════════════════════════════════════
-# Step 3B: Local Install
+# Step 3C: Local Install
 # ═════════════════════════════════════════════════════════════════════════════
 
 if [ "$MODE" = "local" ]; then
@@ -243,6 +385,9 @@ log "Installing 'clawtbot' CLI command..."
 CLI_PATH="$INSTALL_DIR/clawtbot"
 chmod +x "$CLI_PATH" 2>/dev/null || true
 
+# Also make all scripts executable
+chmod +x "$INSTALL_DIR/scripts/"*.sh 2>/dev/null || true
+
 # Symlink to PATH
 LINK_TARGET=""
 if [ -d "/usr/local/bin" ] && [ -w "/usr/local/bin" ]; then
@@ -266,8 +411,15 @@ else
 fi
 
 echo ""
-log "Edit ${INSTALL_DIR}/.env to configure API keys and ports."
-log "See ${INSTALL_DIR}/docs/HOW_TO_GET_API_KEYS.md for API key setup."
+if [ "$MODE" = "production" ]; then
+    log "Config: ${INSTALL_DIR}/.env.production"
+else
+    log "Config: ${INSTALL_DIR}/.env"
+fi
+log "API Keys: ${INSTALL_DIR}/docs/HOW_TO_GET_API_KEYS.md"
 echo ""
-log_ok "Done! Run 'clawtbot start' to launch. 🎉"
+log_ok "Done! 🎉"
+if [ "$MODE" != "production" ]; then
+    log_ok "Run 'clawtbot start' to launch."
+fi
 echo ""
