@@ -6,7 +6,6 @@ import logging
 from typing import Any, Dict, List, Optional
 import httpx
 
-from config import settings
 from platforms.base_platform import BasePlatform
 
 logger = logging.getLogger(__name__)
@@ -15,23 +14,25 @@ YOUTUBE_API_BASE = "https://www.googleapis.com/youtube/v3"
 
 
 class YouTubeClient(BasePlatform):
-    """YouTube Data API v3 client."""
+    """YouTube Data API v3 client using OAuth 2.0 access token."""
 
-    def __init__(self, api_key: str = None, client_id: str = None, client_secret: str = None, refresh_token: str = None):
-        super().__init__("YouTube")
-        self.api_key = api_key or settings.youtube_api_key
-        self.access_token = None  # Set via OAuth flow if needed
+    def __init__(self, access_token: str):
+        super().__init__("YouTube", access_token)
+
+    def _get_headers(self) -> Dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json",
+        }
 
     async def publish(self, text: str, media_url: Optional[str] = None) -> str:
         """
         Publish to YouTube.
-        Note: Full video upload requires OAuth and multipart upload.
+        Note: Full video upload requires multipart upload via resumable sessions.
         This handles community post / text updates.
         """
-        # YouTube video upload requires OAuth2 and is complex
-        # This is a placeholder for community post or video description update
         logger.warning(
-            "YouTube publish: Full video upload requires OAuth2 flow. "
+            "YouTube publish: Full video upload requires resumable upload flow. "
             "Use this for description/community post updates."
         )
         return "youtube-pending"
@@ -41,12 +42,12 @@ class YouTubeClient(BasePlatform):
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(
                 f"{YOUTUBE_API_BASE}/commentThreads",
+                headers=self._get_headers(),
                 params={
                     "part": "snippet",
                     "videoId": post_id,
                     "maxResults": 100,
                     "order": "time",
-                    "key": self.api_key,
                 },
             )
             resp.raise_for_status()
@@ -69,17 +70,12 @@ class YouTubeClient(BasePlatform):
             ]
 
     async def reply_to_comment(self, comment_id: str, text: str) -> str:
-        """Reply to a YouTube comment (requires OAuth)."""
-        # Requires OAuth access token, not just API key
-        if not self.access_token:
-            logger.warning("YouTube reply requires OAuth access token")
-            return ""
-
+        """Reply to a YouTube comment."""
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
                 f"{YOUTUBE_API_BASE}/comments",
                 params={"part": "snippet"},
-                headers={"Authorization": f"Bearer {self.access_token}"},
+                headers=self._get_headers(),
                 json={
                     "snippet": {
                         "parentId": comment_id,
@@ -95,10 +91,10 @@ class YouTubeClient(BasePlatform):
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(
                 f"{YOUTUBE_API_BASE}/videos",
+                headers=self._get_headers(),
                 params={
                     "part": "statistics",
                     "id": post_id,
-                    "key": self.api_key,
                 },
             )
             resp.raise_for_status()
@@ -134,10 +130,10 @@ class YouTubeClient(BasePlatform):
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(
                     f"{YOUTUBE_API_BASE}/channels",
+                    headers=self._get_headers(),
                     params={
                         "part": "id",
                         "mine": "true",
-                        "key": self.api_key,
                     },
                 )
                 return resp.status_code == 200

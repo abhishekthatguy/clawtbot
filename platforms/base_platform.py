@@ -9,8 +9,9 @@ from typing import Any, Dict, List, Optional
 class BasePlatform(ABC):
     """Abstract base class for all social media platform clients."""
 
-    def __init__(self, name: str):
+    def __init__(self, name: str, access_token: str):
         self.name = name
+        self.access_token = access_token
 
     @abstractmethod
     async def publish(self, text: str, media_url: Optional[str] = None) -> str:

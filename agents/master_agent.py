@@ -223,10 +223,13 @@ AVAILABLE INTENTS (pick exactly one):
 | list_providers | | Show configured LLM providers |
 | list_agents | | Show agent model configurations |
 | get_settings | | Show current cron/platform settings |
+| upload_calendar | source_type, url_or_name | Upload/connect a content calendar (CSV file, Google Sheet URL) |
+| list_calendar | (optional: status, brand) | List calendar entries |
+| process_calendar | upload_id or entry_id | Process calendar entries through the pipeline |
 | help | | Show what you can do |
 | general_chat | | Freeform conversation / clarification |
 
-KNOWN AGENTS: content_creator, hashtag_generator, review_agent, engagement_bot, analytics_agent
+KNOWN AGENTS: content_creator, hashtag_generator, review_agent, engagement_bot, analytics_agent, data_parser, scheduler_bot, publisher_bot
 KNOWN PROVIDERS: ollama (free/local), openai, gemini, anthropic, groq
 PLATFORMS: instagram, facebook, twitter, youtube
 TONES: professional, casual, educational, witty, formal
@@ -688,6 +691,108 @@ class ActionExecutor:
             "success": True,
             "message": "General chat — response provided by LLM",
         }
+
+    # ── Calendar Management ─────────────────────────────────────────────────
+
+    async def _handle_upload_calendar(self, params: dict) -> dict:
+        """Handle calendar upload via Google Sheet URL."""
+        url = params.get("url") or params.get("url_or_name", "")
+        source_type = params.get("source_type", "google_sheet")
+        name = params.get("name", "Calendar Import")
+
+        if not url:
+            return {"success": False, "message": "Please provide a Google Sheet URL or file"}
+
+        try:
+            from workflow.calendar_pipeline import CalendarPipeline
+            pipeline = CalendarPipeline()
+
+            result = await pipeline.parse_and_store(
+                source_type=source_type,
+                user_id=self.user_id,
+                name=name,
+                url=url,
+            )
+
+            return {
+                "success": True,
+                "message": f"Parsed {result['parsed_rows']} calendar entries",
+                "data": result,
+            }
+        except Exception as e:
+            return {"success": False, "message": f"Calendar import failed: {str(e)}"}
+
+    async def _handle_list_calendar(self, params: dict) -> dict:
+        """List calendar entries with optional filters."""
+        from db.database import async_session
+        from db.calendar_models import CalendarEntry, CalendarEntryStatus
+        from sqlalchemy import select
+
+        limit = int(params.get("limit", 10))
+
+        async with async_session() as session:
+            query = select(CalendarEntry).order_by(CalendarEntry.row_number).limit(limit)
+
+            status_filter = params.get("status")
+            if status_filter:
+                try:
+                    query = query.where(
+                        CalendarEntry.status == CalendarEntryStatus(status_filter)
+                    )
+                except ValueError:
+                    pass
+
+            brand_filter = params.get("brand")
+            if brand_filter:
+                query = query.where(CalendarEntry.brand == brand_filter)
+
+            result = await session.execute(query)
+            entries = result.scalars().all()
+
+            entry_list = [
+                {
+                    "id": str(e.id),
+                    "brand": e.brand,
+                    "topic": e.topic,
+                    "platforms": e.platforms,
+                    "status": e.status.value if e.status else "pending",
+                    "approval": e.approval_required,
+                    "date": e.date,
+                }
+                for e in entries
+            ]
+
+        return {
+            "success": True,
+            "message": f"Found {len(entry_list)} calendar entries",
+            "data": entry_list,
+        }
+
+    async def _handle_process_calendar(self, params: dict) -> dict:
+        """Process calendar entries through the pipeline."""
+        upload_id = params.get("upload_id")
+        entry_id = params.get("entry_id")
+
+        try:
+            from workflow.calendar_pipeline import CalendarPipeline
+            pipeline = CalendarPipeline()
+
+            if entry_id:
+                result = await pipeline.process_entry(entry_id)
+                msg = "Entry processed" if result.get("success") else f"Failed: {result.get('error')}"
+            elif upload_id:
+                result = await pipeline.process_upload(upload_id)
+                msg = f"Processed {result.get('success', 0)}/{result.get('total_entries', 0)} entries"
+            else:
+                return {"success": False, "message": "Provide upload_id or entry_id"}
+
+            return {
+                "success": result.get("success", True),
+                "message": msg,
+                "data": result,
+            }
+        except Exception as e:
+            return {"success": False, "message": f"Processing failed: {str(e)}"}
 
 
 # ═════════════════════════════════════════════════════════════════════════════

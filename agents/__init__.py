@@ -7,6 +7,7 @@ from agents.scheduler_bot import SchedulerBot
 from agents.publisher_bot import PublisherBot
 from agents.engagement_bot import EngagementBot
 from agents.analytics_agent import AnalyticsAgent
+from agents.data_parser_agent import DataParserAgent
 from agents.master_agent import MasterAgent
 
 __all__ = [
@@ -18,6 +19,7 @@ __all__ = [
     "PublisherBot",
     "EngagementBot",
     "AnalyticsAgent",
+    "DataParserAgent",
     "MasterAgent",
 ]
 

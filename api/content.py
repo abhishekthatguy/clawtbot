@@ -20,6 +20,54 @@ from db.models import Content, ContentStatus, Schedule, Platform as PlatformEnum
 router = APIRouter(prefix="/content", tags=["Content"])
 
 
+# ─── Dashboard Stats ─────────────────────────────────────────────────────────
+
+@router.get("/stats")
+async def get_content_stats(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Aggregate content counts by status for the dashboard."""
+    from sqlalchemy import func
+
+    # Total count
+    total_result = await db.execute(select(func.count()).select_from(Content))
+    total = total_result.scalar() or 0
+
+    # Count per status
+    status_counts = {}
+    for s in ContentStatus:
+        result = await db.execute(
+            select(func.count()).select_from(Content).where(Content.status == s)
+        )
+        status_counts[s.value] = result.scalar() or 0
+
+    # Average review score
+    avg_result = await db.execute(
+        select(func.avg(Content.review_score)).where(Content.review_score.isnot(None))
+    )
+    avg_score = avg_result.scalar()
+    avg_score = round(float(avg_score), 1) if avg_score else 0.0
+
+    # Recent published (last 7 days)
+    from datetime import timedelta
+    week_ago = datetime.utcnow() - timedelta(days=7)
+    recent_result = await db.execute(
+        select(func.count()).select_from(Schedule).where(
+            Schedule.is_published == True,
+            Schedule.published_at >= week_ago,
+        )
+    )
+    recent_published = recent_result.scalar() or 0
+
+    return {
+        "total": total,
+        "by_status": status_counts,
+        "avg_review_score": avg_score,
+        "recent_published_7d": recent_published,
+    }
+
+
 # ─── Request / Response Schemas ──────────────────────────────────────────────
 
 class ContentResponse(BaseModel):
@@ -217,45 +265,19 @@ async def publish_now(
 
     platform_name = content.platform.value if hasattr(content.platform, 'value') else content.platform
 
-    # Get platform client with credentials from DB
-    from utils.credential_loader import get_platform_credentials
+    # Get platform client with credentials from SocialConnection model
+    from utils.credential_loader import get_platform_client
 
-    creds = await get_platform_credentials(platform_name)
-    if not creds:
-        raise HTTPException(
-            status_code=400,
-            detail=f"No credentials configured for {platform_name}. Please add them in Settings → Platforms.",
-        )
-
-    # Create the platform client
-    platform_client = None
-    if platform_name == "facebook":
-        from platforms.facebook import FacebookClient
-        if creds.get("access_token") and creds.get("page_id"):
-            platform_client = FacebookClient(
-                access_token=creds["access_token"],
-                page_id=creds["page_id"],
-            )
-    elif platform_name == "instagram":
-        from platforms.instagram import InstagramClient
-        if creds.get("access_token") and creds.get("business_account_id"):
-            platform_client = InstagramClient(
-                access_token=creds["access_token"],
-                business_account_id=creds["business_account_id"],
-            )
-    elif platform_name == "twitter":
-        from platforms.twitter import TwitterClient
-        if creds.get("api_key") and creds.get("api_secret"):
-            platform_client = TwitterClient(**creds)
-    elif platform_name == "youtube":
-        from platforms.youtube import YouTubeClient
-        if creds.get("api_key"):
-            platform_client = YouTubeClient(**creds)
+    platform_client = await get_platform_client(
+        platform=platform_name,
+        user_id=user.id,
+        connection_id=getattr(content, 'social_connection_id', None),
+    )
 
     if not platform_client:
         raise HTTPException(
             status_code=400,
-            detail=f"Required credential keys are missing for {platform_name}.",
+            detail=f"No credentials configured for {platform_name}. Connect an account in Settings → Social Media.",
         )
 
     try:

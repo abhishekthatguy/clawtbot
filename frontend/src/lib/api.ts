@@ -172,6 +172,17 @@ export async function publishNow(id: string) {
   return apiFetch(`/content/${id}/publish-now`, { method: "POST" });
 }
 
+export interface DashboardStats {
+  total: number;
+  by_status: Record<string, number>;
+  avg_review_score: number;
+  recent_published_7d: number;
+}
+
+export async function getDashboardStats(): Promise<DashboardStats> {
+  return apiFetch("/content/stats");
+}
+
 // ─── Analytics Endpoints ───────────────────────────────────────────────────
 
 export async function getAnalyticsReport(days: number = 7) {
@@ -198,6 +209,41 @@ export async function healthCheck() {
   return apiFetch("/health");
 }
 
+// ─── WhatsApp Approval ────────────────────────────────────────────────────
+
+export interface WhatsAppStatus {
+  configured: boolean;
+  phone_number_id: string | null;
+  approval_phone: string | null;
+}
+
+export interface WhatsAppApproval {
+  id: string;
+  content_id: string;
+  status: "pending" | "approved" | "rejected" | "expired";
+  phone_number: string;
+  sent_at: string | null;
+  responded_at: string | null;
+  expires_at: string | null;
+}
+
+export async function getWhatsAppStatus(): Promise<WhatsAppStatus> {
+  return apiFetch("/whatsapp/status");
+}
+
+export async function sendForWhatsAppApproval(
+  contentId: string
+): Promise<{ status: string; approval_id: string; token: string }> {
+  return apiFetch(`/whatsapp/send-approval/${contentId}`, { method: "POST" });
+}
+
+export async function listWhatsAppApprovals(
+  status?: string
+): Promise<WhatsAppApproval[]> {
+  const query = status ? `?status=${status}` : "";
+  return apiFetch(`/whatsapp/approvals${query}`);
+}
+
 // ─── Settings: Cron ────────────────────────────────────────────────────────
 
 export interface CronSettings {
@@ -221,39 +267,69 @@ export async function updateCronSettings(data: CronSettings): Promise<CronSettin
   });
 }
 
-// ─── Settings: Platform Credentials ────────────────────────────────────────
+// ─── Social Connections (OAuth-based) ──────────────────────────────────────
 
-export interface PlatformCredential {
+export interface SocialPlatformInfo {
   platform: string;
+  display_name: string;
+  icon: string;
+  configured: boolean;
+  connected_accounts: number;
+  note: string;
+}
+
+export interface SocialConnectionInfo {
+  id: string;
+  platform: string;
+  platform_account_id: string;
+  platform_username: string | null;
+  platform_avatar_url: string | null;
+  account_type: string | null;
   is_active: boolean;
-  credential_keys: string[];
-  masked_credentials: Record<string, string>;
-  last_tested_at: string | null;
-  test_status: string | null;
+  connected_at: string | null;
+  last_used_at: string | null;
+  last_error: string | null;
 }
 
-export async function listPlatformCredentials(): Promise<PlatformCredential[]> {
-  return apiFetch("/settings/platforms");
+export async function listSocialPlatforms(): Promise<SocialPlatformInfo[]> {
+  return apiFetch("/social/platforms");
 }
 
-export async function savePlatformCredential(
+export async function getSocialConnectURL(
   platform: string,
-  credentials: Record<string, string>,
-  is_active: boolean = true
-) {
-  return apiFetch(`/settings/platforms/${platform}`, {
-    method: "PUT",
-    body: JSON.stringify({ credentials, is_active }),
+  redirectUri: string
+): Promise<{ url: string; platform: string }> {
+  return apiFetch(`/social/connect/${platform}?redirect_uri=${encodeURIComponent(redirectUri)}`);
+}
+
+export async function handleSocialCallback(
+  platform: string,
+  code: string,
+  redirectUri: string,
+  state?: string
+): Promise<SocialConnectionInfo> {
+  return apiFetch(`/social/callback/${platform}`, {
+    method: "POST",
+    body: JSON.stringify({ code, redirect_uri: redirectUri, state }),
   });
 }
 
-export async function deletePlatformCredential(platform: string) {
-  return apiFetch(`/settings/platforms/${platform}`, { method: "DELETE" });
+export async function listSocialConnections(
+  platform?: string
+): Promise<SocialConnectionInfo[]> {
+  const query = platform ? `?platform=${platform}` : "";
+  return apiFetch(`/social/connections${query}`);
 }
 
-export async function testPlatformCredential(platform: string) {
-  return apiFetch(`/settings/platforms/${platform}/test`, { method: "POST" });
+export async function disconnectSocialAccount(connectionId: string) {
+  return apiFetch(`/social/connections/${connectionId}`, { method: "DELETE" });
 }
+
+export async function permanentlyDeleteSocialConnection(connectionId: string) {
+  return apiFetch(`/social/connections/${connectionId}/permanent`, { method: "DELETE" });
+}
+
+
 
 // ─── Settings: Google Drive ────────────────────────────────────────────────
 
@@ -387,3 +463,148 @@ export async function getChatHistory(
 export async function listConversations(): Promise<ConversationPreview[]> {
   return apiFetch("/chat/conversations");
 }
+
+// ─── Calendar (Content Calendar Pipeline) ──────────────────────────────────
+
+export interface CalendarUpload {
+  id: string;
+  name: string;
+  source_type: string;
+  total_rows: number;
+  parsed_rows: number;
+  failed_rows: number;
+  is_processed: boolean;
+  created_at: string;
+}
+
+export interface CalendarEntry {
+  id: string;
+  upload_id: string;
+  row_number: number | null;
+  date: string | null;
+  brand: string | null;
+  content_type: string | null;
+  topic: string;
+  tone: string | null;
+  platforms: string[];
+  default_hashtags: string[];
+  generated_hashtags: string[];
+  approval_required: boolean;
+  status: string;
+  pipeline_stage: string;
+  content_ids: string[];
+  pipeline_errors: string[] | null;
+  created_at: string;
+}
+
+export interface CalendarStats {
+  total_uploads: number;
+  total_entries: number;
+  by_status: Record<string, number>;
+  by_brand: Record<string, number>;
+  by_platform: Record<string, number>;
+}
+
+export async function uploadCalendarCSV(file: File, name?: string) {
+  const token = getToken();
+  const formData = new FormData();
+  formData.append("file", file);
+  if (name) formData.append("name", name);
+
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const response = await fetch(`${API_BASE}/calendar/upload/csv`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.detail || `Upload failed: ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function uploadCalendarGoogleSheet(url: string, name?: string) {
+  return apiFetch("/calendar/upload/google-sheet", {
+    method: "POST",
+    body: JSON.stringify({ url, name: name || "Google Sheet Import" }),
+  });
+}
+
+export async function uploadCalendarJSON(file: File, name?: string) {
+  const token = getToken();
+  const formData = new FormData();
+  formData.append("file", file);
+  if (name) formData.append("name", name);
+
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const response = await fetch(`${API_BASE}/calendar/upload/json`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.detail || `Upload failed: ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function listCalendarUploads(limit = 20, offset = 0) {
+  return apiFetch<{ total: number; items: CalendarUpload[] }>(
+    `/calendar/uploads?limit=${limit}&offset=${offset}`
+  );
+}
+
+export async function deleteCalendarUpload(uploadId: string) {
+  return apiFetch(`/calendar/uploads/${uploadId}`, { method: "DELETE" });
+}
+
+export async function listCalendarEntries(params?: {
+  upload_id?: string;
+  status?: string;
+  brand?: string;
+  platform?: string;
+  limit?: number;
+  offset?: number;
+}) {
+  const searchParams = new URLSearchParams();
+  if (params?.upload_id) searchParams.set("upload_id", params.upload_id);
+  if (params?.status) searchParams.set("status", params.status);
+  if (params?.brand) searchParams.set("brand", params.brand);
+  if (params?.platform) searchParams.set("platform", params.platform);
+  if (params?.limit) searchParams.set("limit", params.limit.toString());
+  if (params?.offset) searchParams.set("offset", params.offset.toString());
+
+  const query = searchParams.toString();
+  return apiFetch<{ total: number; items: CalendarEntry[] }>(
+    `/calendar/entries${query ? `?${query}` : ""}`
+  );
+}
+
+export async function getCalendarEntry(entryId: string) {
+  return apiFetch(`/calendar/entries/${entryId}`);
+}
+
+export async function processCalendarUpload(uploadId: string) {
+  return apiFetch(`/calendar/process/upload/${uploadId}`, { method: "POST" });
+}
+
+export async function processCalendarUploadAsync(uploadId: string) {
+  return apiFetch(`/calendar/process/upload/${uploadId}/async`, { method: "POST" });
+}
+
+export async function processCalendarEntry(entryId: string) {
+  return apiFetch(`/calendar/process/entry/${entryId}`, { method: "POST" });
+}
+
+export async function getCalendarStats(): Promise<CalendarStats> {
+  return apiFetch("/calendar/stats");
+}
+

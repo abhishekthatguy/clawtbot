@@ -31,6 +31,18 @@ class Platform(str, enum.Enum):
     FACEBOOK = "facebook"
     TWITTER = "twitter"
     YOUTUBE = "youtube"
+    LINKEDIN = "linkedin"
+    REDDIT = "reddit"
+    MEDIUM = "medium"
+    BLOGGER = "blogger"
+    GMAIL = "gmail"
+
+
+class PublishMode(str, enum.Enum):
+    """How content gets published: manually by user, scheduled, or via AI agent."""
+    MANUAL = "manual"          # User clicks "Publish Now"
+    SCHEDULED = "scheduled"    # User sets a date/time
+    AI_AGENT = "ai_agent"      # AI agent decides when to publish
 
 
 # ─── Content Model ──────────────────────────────────────────────────────────
@@ -58,8 +70,12 @@ class Content(Base):
     review_feedback = Column(Text, nullable=True)
     improved_text = Column(Text, nullable=True)
 
-    # Status
+    # Status & Publish Mode
     status = Column(SAEnum(ContentStatus), default=ContentStatus.DRAFT, nullable=False)
+    publish_mode = Column(SAEnum(PublishMode), default=PublishMode.MANUAL, nullable=False)
+
+    # Target social account (which connected account to publish to)
+    social_connection_id = Column(UUID(as_uuid=True), ForeignKey("social_connections.id"), nullable=True)
 
     # Metadata
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
@@ -70,6 +86,7 @@ class Content(Base):
     schedules = relationship("Schedule", back_populates="content", cascade="all, delete-orphan")
     analytics = relationship("AnalyticsRecord", back_populates="content", cascade="all, delete-orphan")
     engagements = relationship("EngagementLog", back_populates="content", cascade="all, delete-orphan")
+    social_connection = relationship("SocialConnection", back_populates="contents")
 
 
 # ─── Schedule Model ─────────────────────────────────────────────────────────

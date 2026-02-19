@@ -43,30 +43,7 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 1440  # 24 hours
 
-    # ── Instagram ───────────────────────────────────────────────────────
-    instagram_access_token: str = ""
-    instagram_business_account_id: str = ""
-    instagram_app_secret: str = ""
-
-    # ── Facebook ────────────────────────────────────────────────────────
-    facebook_access_token: str = ""
-    facebook_page_id: str = ""
-    facebook_app_secret: str = ""
-
-    # ── Twitter / X ─────────────────────────────────────────────────────
-    twitter_api_key: str = ""
-    twitter_api_secret: str = ""
-    twitter_access_token: str = ""
-    twitter_access_token_secret: str = ""
-    twitter_bearer_token: str = ""
-
-    # ── YouTube ─────────────────────────────────────────────────────────
-    youtube_api_key: str = ""
-    youtube_client_id: str = ""
-    youtube_client_secret: str = ""
-    youtube_refresh_token: str = ""
-
-    # ── OAuth (Social Login) ────────────────────────────────────────────
+    # ── OAuth — User Login (Google, Facebook, GitHub, Twitter) ──────────
     oauth_google_client_id: str = ""
     oauth_google_client_secret: str = ""
     oauth_facebook_app_id: str = ""
@@ -75,6 +52,42 @@ class Settings(BaseSettings):
     oauth_github_client_secret: str = ""
     oauth_twitter_client_id: str = ""
     oauth_twitter_client_secret: str = ""
+
+    # ── OAuth — Social Platforms (also used for Connect flows) ──────────
+    # LinkedIn
+    oauth_linkedin_client_id: str = ""
+    oauth_linkedin_client_secret: str = ""
+    # Reddit
+    oauth_reddit_client_id: str = ""
+    oauth_reddit_client_secret: str = ""
+    # Medium
+    oauth_medium_client_id: str = ""
+    oauth_medium_client_secret: str = ""
+
+    # ── WhatsApp Business API (for content approval flow) ────────────────
+    whatsapp_access_token: str = ""
+    whatsapp_phone_number_id: str = ""
+    whatsapp_verify_token: str = "clawtbot-whatsapp-verify"
+    whatsapp_approval_phone: str = ""  # Phone number to send approval messages to
+
+    # ── Legacy Platform Credentials (deprecated — use OAuth Connect) ────
+    # Kept for backward compatibility during migration.
+    # These will be removed in a future version.
+    instagram_access_token: str = ""
+    instagram_business_account_id: str = ""
+    instagram_app_secret: str = ""
+    facebook_access_token: str = ""
+    facebook_page_id: str = ""
+    facebook_app_secret: str = ""
+    twitter_api_key: str = ""
+    twitter_api_secret: str = ""
+    twitter_access_token: str = ""
+    twitter_access_token_secret: str = ""
+    twitter_bearer_token: str = ""
+    youtube_api_key: str = ""
+    youtube_client_id: str = ""
+    youtube_client_secret: str = ""
+    youtube_refresh_token: str = ""
 
     @model_validator(mode="after")
     def _derive_urls_from_ports(self) -> "Settings":
@@ -102,6 +115,7 @@ class Settings(BaseSettings):
     def cors_origins_list(self) -> List[str]:
         return [origin.strip() for origin in self.cors_origins.split(",")]
 
+    # Legacy compatibility — these check old env vars (will be removed)
     @property
     def is_instagram_configured(self) -> bool:
         return bool(self.instagram_access_token and self.instagram_business_account_id)

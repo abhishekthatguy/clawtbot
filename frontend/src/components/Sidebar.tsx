@@ -8,6 +8,7 @@ const NAV_ITEMS = [
     { href: "/chat", label: "Master Agent", icon: "🤖" },
     { href: "/content", label: "Content", icon: "📝" },
     { href: "/workflows", label: "Workflows", icon: "🔄" },
+    { href: "/calendar", label: "Calendar", icon: "📅" },
     { href: "/analytics", label: "Analytics", icon: "📊" },
     { href: "/settings", label: "Settings", icon: "⚙️" },
 ];
@@ -89,7 +90,7 @@ export default function Sidebar() {
                         </span>
                     </div>
                     <p className="text-xs" style={{ color: "var(--clawt-text-dim)" }}>
-                        7 Agents Active
+                        8 Agents Active
                     </p>
                     <div className="mt-2 grid grid-cols-3 gap-1.5">
                         <div className="flex items-center gap-1">

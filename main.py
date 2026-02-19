@@ -31,6 +31,9 @@ async def lifespan(app: FastAPI):
     import auth.models  # noqa: F401 — registers User, OAuth, OTP, etc.
     import db.models     # noqa: F401 — registers Content, etc.
     import db.settings_models  # noqa: F401 — registers Settings, Chat, etc.
+    import db.social_connections  # noqa: F401 — registers SocialConnection
+    import db.whatsapp_approval   # noqa: F401 — registers WhatsAppApproval
+    import db.calendar_models     # noqa: F401 — registers CalendarUpload, CalendarEntry
 
     await init_db()
     logger.info("✅ Database initialized")
@@ -85,6 +88,9 @@ from api.platforms import router as platforms_router
 from api.settings import router as settings_router
 from api.llm_settings import router as llm_settings_router
 from api.chat import router as chat_router
+from api.social_connections import router as social_connections_router
+from api.whatsapp_approval import router as whatsapp_router
+from api.calendar import router as calendar_router
 
 app.include_router(auth_router)
 app.include_router(workflow_router)
@@ -94,6 +100,9 @@ app.include_router(platforms_router)
 app.include_router(settings_router)
 app.include_router(llm_settings_router)
 app.include_router(chat_router)
+app.include_router(social_connections_router)
+app.include_router(whatsapp_router)
+app.include_router(calendar_router)
 
 
 # ─── Health Check ────────────────────────────────────────────────────────────

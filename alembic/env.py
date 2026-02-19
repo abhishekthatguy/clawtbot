@@ -16,6 +16,8 @@ if config.config_file_name is not None:
 from db.database import Base       # noqa: E402
 import db.models                   # noqa: E402, F401
 import db.settings_models          # noqa: E402, F401
+import db.social_connections       # noqa: E402, F401
+import db.whatsapp_approval        # noqa: E402, F401
 import auth.models                 # noqa: E402, F401
 
 target_metadata = Base.metadata

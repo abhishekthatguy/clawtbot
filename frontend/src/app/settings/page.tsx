@@ -4,10 +4,6 @@ import { useState, useEffect, useCallback } from "react";
 import {
     getCronSettings,
     updateCronSettings,
-    listPlatformCredentials,
-    savePlatformCredential,
-    deletePlatformCredential,
-    testPlatformCredential,
     getGoogleDriveConfig,
     updateGoogleDriveConfig,
     disconnectGoogleDrive,
@@ -18,18 +14,29 @@ import {
     listAgentModelConfigs,
     assignAgentModel,
     resetAgentModel,
+    listSocialPlatforms,
+    getSocialConnectURL,
+    handleSocialCallback,
+    listSocialConnections,
+    disconnectSocialAccount,
+    getWhatsAppStatus,
+    listWhatsAppApprovals,
     type CronSettings,
-    type PlatformCredential,
     type GoogleDriveConfig,
     type LLMProvider,
     type AgentModelConfig,
+    type SocialPlatformInfo,
+    type SocialConnectionInfo,
+    type WhatsAppStatus,
+    type WhatsAppApproval,
 } from "@/lib/api";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const TABS = [
-    { id: "cron", label: "Cron Jobs", icon: "⏰" },
+    { id: "cron", label: "Scheduling", icon: "⏰" },
     { id: "platforms", label: "Social Media", icon: "🔗" },
+    { id: "whatsapp", label: "WhatsApp", icon: "📲" },
     { id: "drive", label: "Google Drive", icon: "📁" },
     { id: "aimodels", label: "AI Models", icon: "🧠" },
 ];
@@ -41,36 +48,6 @@ const TIMEZONES = [
     "Europe/London", "Europe/Paris", "Europe/Berlin", "Asia/Tokyo",
     "Asia/Singapore", "Australia/Sydney", "Pacific/Auckland", "UTC",
 ];
-
-const PLATFORM_FIELDS: Record<string, { key: string; label: string; placeholder: string }[]> = {
-    instagram: [
-        { key: "access_token", label: "Access Token", placeholder: "EAABwzLixnjY..." },
-        { key: "business_account_id", label: "Business Account ID", placeholder: "17841400000000000" },
-        { key: "app_secret", label: "App Secret", placeholder: "abc123def456..." },
-    ],
-    facebook: [
-        { key: "access_token", label: "Access Token", placeholder: "EAABwzLixnjY..." },
-        { key: "page_id", label: "Page ID", placeholder: "100000000000000" },
-        { key: "app_secret", label: "App Secret", placeholder: "def456ghi789..." },
-    ],
-    twitter: [
-        { key: "api_key", label: "API Key", placeholder: "xAi1234567890..." },
-        { key: "api_secret", label: "API Secret", placeholder: "xAs1234567890..." },
-        { key: "access_token", label: "Access Token", placeholder: "1234567890-..." },
-        { key: "access_token_secret", label: "Access Token Secret", placeholder: "ExampleAccess..." },
-        { key: "bearer_token", label: "Bearer Token", placeholder: "AAAAAAAAAA..." },
-    ],
-    youtube: [
-        { key: "api_key", label: "API Key", placeholder: "AIzaSy..." },
-        { key: "client_id", label: "Client ID", placeholder: "123456789012-..." },
-        { key: "client_secret", label: "Client Secret", placeholder: "GOCSPX-..." },
-        { key: "refresh_token", label: "Refresh Token", placeholder: "1//0Example..." },
-    ],
-};
-
-const PLATFORM_ICONS: Record<string, string> = {
-    instagram: "📸", facebook: "👤", twitter: "🐦", youtube: "▶️",
-};
 
 // ─── Styles ─────────────────────────────────────────────────────────────────
 
@@ -100,7 +77,7 @@ const btnPrimary: React.CSSProperties = {
     padding: "10px 24px",
     borderRadius: "10px",
     border: "none",
-    background: "linear-gradient(135deg, #dc2626, #991b1b)",
+    background: "linear-gradient(135deg, #06b6d4, #8b5cf6)",
     color: "white",
     fontWeight: 600,
     fontSize: "14px",
@@ -183,7 +160,7 @@ export default function SettingsPage() {
             </div>
 
             {/* Tabs */}
-            <div className="flex gap-2 mb-8">
+            <div className="flex gap-2 mb-8 flex-wrap">
                 {TABS.map((tab) => (
                     <button
                         key={tab.id}
@@ -192,9 +169,9 @@ export default function SettingsPage() {
                             padding: "10px 20px",
                             borderRadius: "12px",
                             border: "1px solid",
-                            borderColor: activeTab === tab.id ? "rgba(220, 38, 38, 0.5)" : "var(--clawt-border)",
+                            borderColor: activeTab === tab.id ? "rgba(6, 182, 212, 0.5)" : "var(--clawt-border)",
                             background: activeTab === tab.id
-                                ? "linear-gradient(135deg, rgba(220, 38, 38, 0.15), rgba(220, 38, 38, 0.05))"
+                                ? "linear-gradient(135deg, rgba(6, 182, 212, 0.15), rgba(139, 92, 246, 0.1))"
                                 : "var(--clawt-surface)",
                             color: activeTab === tab.id ? "white" : "var(--clawt-text-dim)",
                             fontSize: "14px",
@@ -210,7 +187,8 @@ export default function SettingsPage() {
 
             {/* Tab Content */}
             {activeTab === "cron" && <CronTab onToast={showToast} />}
-            {activeTab === "platforms" && <PlatformsTab onToast={showToast} />}
+            {activeTab === "platforms" && <SocialConnectionsTab onToast={showToast} />}
+            {activeTab === "whatsapp" && <WhatsAppApprovalTab onToast={showToast} />}
             {activeTab === "drive" && <DriveTab onToast={showToast} />}
             {activeTab === "aimodels" && <AIModelsTab onToast={showToast} />}
 
@@ -419,215 +397,291 @@ function CronTab({ onToast }: { onToast: (msg: string, t: "success" | "error") =
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Tab 2: Platform Credentials
+// Tab 2: Social Media Connections (OAuth)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function PlatformsTab({ onToast }: { onToast: (msg: string, t: "success" | "error") => void }) {
-    // Default platform list so cards always render even without backend
-    const DEFAULT_PLATFORMS: PlatformCredential[] = Object.keys(PLATFORM_FIELDS).map((p) => ({
-        platform: p,
-        is_active: false,
-        credential_keys: [],
-        masked_credentials: {},
-        last_tested_at: null,
-        test_status: null,
-    }));
-
-    const [platforms, setPlatforms] = useState<PlatformCredential[]>(DEFAULT_PLATFORMS);
-    const [expanded, setExpanded] = useState<string | null>(null);
-    const [formData, setFormData] = useState<Record<string, Record<string, string>>>({});
-    const [testing, setTesting] = useState<string | null>(null);
-    const [saving, setSaving] = useState<string | null>(null);
+function SocialConnectionsTab({ onToast }: { onToast: (msg: string, t: "success" | "error") => void }) {
+    const [platforms, setPlatforms] = useState<SocialPlatformInfo[]>([]);
+    const [connections, setConnections] = useState<SocialConnectionInfo[]>([]);
     const [loading, setLoading] = useState(true);
+    const [connecting, setConnecting] = useState<string | null>(null);
+    const [disconnecting, setDisconnecting] = useState<string | null>(null);
 
-    const loadPlatforms = useCallback(async () => {
+    const loadData = useCallback(async () => {
         try {
-            const data = await listPlatformCredentials();
-            if (data && data.length > 0) {
-                setPlatforms(data);
-            }
-            // If API returns empty or fails, we keep DEFAULT_PLATFORMS
-        } catch { /* keep defaults */ }
-        finally { setLoading(false); }
+            const [plats, conns] = await Promise.all([
+                listSocialPlatforms(),
+                listSocialConnections(),
+            ]);
+            setPlatforms(plats);
+            setConnections(conns);
+        } catch {
+            setPlatforms([]);
+        } finally {
+            setLoading(false);
+        }
     }, []);
 
-    useEffect(() => { loadPlatforms(); }, [loadPlatforms]);
+    useEffect(() => { loadData(); }, [loadData]);
 
-    const handleSave = async (platform: string) => {
-        const creds = formData[platform];
-        if (!creds || Object.values(creds).every((v) => !v)) {
-            onToast("Please fill in at least one credential field", "error");
-            return;
-        }
-        setSaving(platform);
+    // Listen for OAuth callback messages from popup window
+    useEffect(() => {
+        const handler = async (event: MessageEvent) => {
+            if (event.data?.type === "social-oauth-callback") {
+                const { platform, code, redirectUri } = event.data;
+                setConnecting(platform);
+                try {
+                    await handleSocialCallback(platform, code, redirectUri);
+                    onToast(`${platform} connected successfully!`, "success");
+                    await loadData();
+                } catch (err) {
+                    onToast(`Failed to connect ${platform}: ${err instanceof Error ? err.message : "Unknown error"}`, "error");
+                } finally {
+                    setConnecting(null);
+                }
+            }
+        };
+        window.addEventListener("message", handler);
+        return () => window.removeEventListener("message", handler);
+    }, [loadData, onToast]);
+
+    const handleConnect = async (platform: string) => {
+        setConnecting(platform);
         try {
-            await savePlatformCredential(platform, creds);
-            await loadPlatforms();
-            setFormData((prev) => ({ ...prev, [platform]: {} }));
-            onToast(`${platform} credentials saved`, "success");
-        } catch {
-            onToast(`Failed to save ${platform} credentials`, "error");
-        } finally {
-            setSaving(null);
+            const redirectUri = `${window.location.origin}/api/social-callback`;
+            const { url } = await getSocialConnectURL(platform, redirectUri);
+
+            // Open OAuth popup
+            const width = 600, height = 700;
+            const left = window.screenX + (window.innerWidth - width) / 2;
+            const top = window.screenY + (window.innerHeight - height) / 2;
+            window.open(
+                url,
+                `Connect ${platform}`,
+                `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no`
+            );
+        } catch (err) {
+            onToast(`Failed to start OAuth for ${platform}: ${err instanceof Error ? err.message : "Not configured"}`, "error");
+            setConnecting(null);
         }
     };
 
-    const handleTest = async (platform: string) => {
-        setTesting(platform);
+    const handleDisconnect = async (connectionId: string, platformName: string) => {
+        setDisconnecting(connectionId);
         try {
-            const res = await testPlatformCredential(platform) as { status: string; message: string };
-            onToast(res.message, res.status === "connected" ? "success" : "error");
-            await loadPlatforms();
+            await disconnectSocialAccount(connectionId);
+            onToast(`${platformName} account disconnected`, "success");
+            await loadData();
         } catch {
-            onToast(`Test failed for ${platform}`, "error");
+            onToast("Failed to disconnect account", "error");
         } finally {
-            setTesting(null);
-        }
-    };
-
-    const handleDelete = async (platform: string) => {
-        try {
-            await deletePlatformCredential(platform);
-            await loadPlatforms();
-            onToast(`${platform} credentials removed`, "success");
-        } catch {
-            onToast(`Failed to remove ${platform} credentials`, "error");
+            setDisconnecting(null);
         }
     };
 
     if (loading) return <div style={{ color: "var(--clawt-text-dim)" }}>Loading platforms...</div>;
 
+    // Group connections by platform
+    const connectionsByPlatform: Record<string, SocialConnectionInfo[]> = {};
+    connections.forEach((c) => {
+        if (!connectionsByPlatform[c.platform]) connectionsByPlatform[c.platform] = [];
+        connectionsByPlatform[c.platform].push(c);
+    });
+
     return (
-        <div className="grid gap-4" style={{ maxWidth: 800 }}>
-            {platforms.map((plat) => {
-                const isExpanded = expanded === plat.platform;
-                const fields = PLATFORM_FIELDS[plat.platform] || [];
-                const icon = PLATFORM_ICONS[plat.platform] || "🔗";
-                const form = formData[plat.platform] || {};
+        <div style={{ maxWidth: 900 }}>
+            {/* Header */}
+            <div className="mb-6" style={{
+                ...cardStyle,
+                background: "linear-gradient(135deg, rgba(6, 182, 212, 0.08), rgba(139, 92, 246, 0.05))",
+                borderColor: "rgba(6, 182, 212, 0.2)",
+            }}>
+                <h3 className="font-semibold text-white mb-2">🔗 Connect Your Social Accounts</h3>
+                <p className="text-sm" style={{ color: "var(--clawt-text-dim)" }}>
+                    Click <strong style={{ color: "white" }}>Connect</strong> to authorize ClawtBot via OAuth.
+                    No API keys needed — just log in and grant permission.
+                    You can connect multiple accounts per platform.
+                </p>
+            </div>
 
-                const statusColor = plat.test_status === "connected"
-                    ? "#22c55e"
-                    : plat.test_status === "failed"
-                        ? "#ef4444"
-                        : "var(--clawt-text-dim)";
+            {/* Platform Grid */}
+            <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
+                {platforms.map((plat) => {
+                    const platConnections = connectionsByPlatform[plat.platform] || [];
+                    const hasConnections = platConnections.length > 0;
+                    const isConnecting = connecting === plat.platform;
 
-                return (
-                    <div key={plat.platform} style={cardStyle}>
-                        {/* Header */}
-                        <button
-                            onClick={() => setExpanded(isExpanded ? null : plat.platform)}
-                            className="w-full flex items-center justify-between"
-                            style={{ background: "none", border: "none", cursor: "pointer", color: "white" }}
+                    return (
+                        <div
+                            key={plat.platform}
+                            style={{
+                                ...cardStyle,
+                                borderColor: hasConnections ? "rgba(34, 197, 94, 0.3)" : "var(--clawt-border)",
+                                position: "relative",
+                            }}
                         >
-                            <div className="flex items-center gap-3">
-                                <span className="text-2xl">{icon}</span>
-                                <div className="text-left">
-                                    <h3 className="font-semibold capitalize">{plat.platform}</h3>
-                                    <p className="text-xs" style={{ color: statusColor }}>
-                                        {plat.credential_keys.length > 0
-                                            ? `${plat.credential_keys.length} keys configured`
-                                            : "Not configured"}
-                                        {plat.test_status && ` • ${plat.test_status}`}
+                            {/* Status dot */}
+                            {hasConnections && (
+                                <div
+                                    style={{
+                                        position: "absolute",
+                                        top: 12,
+                                        right: 12,
+                                        width: 10,
+                                        height: 10,
+                                        borderRadius: "50%",
+                                        background: "#22c55e",
+                                        boxShadow: "0 0 8px rgba(34, 197, 94, 0.5)",
+                                    }}
+                                />
+                            )}
+
+                            {/* Platform Header */}
+                            <div className="flex items-center gap-3 mb-4">
+                                <div
+                                    className="flex items-center justify-center"
+                                    style={{
+                                        width: 48,
+                                        height: 48,
+                                        borderRadius: 12,
+                                        fontSize: 24,
+                                        background: hasConnections
+                                            ? "rgba(34, 197, 94, 0.1)"
+                                            : "rgba(139, 92, 246, 0.1)",
+                                        border: `1px solid ${hasConnections ? "rgba(34, 197, 94, 0.2)" : "rgba(139, 92, 246, 0.2)"}`,
+                                    }}
+                                >
+                                    {plat.icon}
+                                </div>
+                                <div>
+                                    <h4 className="font-semibold text-white">{plat.display_name}</h4>
+                                    <p className="text-xs" style={{ color: "var(--clawt-text-dim)" }}>
+                                        {hasConnections
+                                            ? `${platConnections.length} account${platConnections.length > 1 ? "s" : ""} connected`
+                                            : plat.configured ? "Ready to connect" : "Not configured"
+                                        }
                                     </p>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-3">
-                                {plat.is_active && plat.credential_keys.length > 0 && (
-                                    <span
-                                        className="px-3 py-1 rounded-full text-xs font-medium"
+
+                            {/* Connected Accounts */}
+                            {platConnections.map((conn) => (
+                                <div
+                                    key={conn.id}
+                                    className="flex items-center justify-between mb-3"
+                                    style={{
+                                        padding: 12,
+                                        borderRadius: 12,
+                                        background: "var(--clawt-bg)",
+                                        border: "1px solid var(--clawt-border)",
+                                    }}
+                                >
+                                    <div className="flex items-center gap-2">
+                                        {conn.platform_avatar_url ? (
+                                            <img
+                                                src={conn.platform_avatar_url}
+                                                alt=""
+                                                style={{
+                                                    width: 32,
+                                                    height: 32,
+                                                    borderRadius: "50%",
+                                                    objectFit: "cover",
+                                                    border: "1px solid var(--clawt-border)",
+                                                }}
+                                            />
+                                        ) : (
+                                            <div
+                                                style={{
+                                                    width: 32,
+                                                    height: 32,
+                                                    borderRadius: "50%",
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    justifyContent: "center",
+                                                    fontSize: 12,
+                                                    fontWeight: 700,
+                                                    background: "rgba(6, 182, 212, 0.2)",
+                                                    color: "#06b6d4",
+                                                }}
+                                            >
+                                                {(conn.platform_username || "?")[0].toUpperCase()}
+                                            </div>
+                                        )}
+                                        <div>
+                                            <p style={{ fontSize: 14, fontWeight: 500, color: "white" }}>
+                                                {conn.platform_username || "Unknown"}
+                                            </p>
+                                            <p className="text-xs" style={{ color: "var(--clawt-text-dim)" }}>
+                                                {conn.account_type || "account"}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => handleDisconnect(conn.id, plat.display_name)}
+                                        disabled={disconnecting === conn.id}
                                         style={{
-                                            background: "rgba(34, 197, 94, 0.15)",
-                                            color: "#22c55e",
-                                            border: "1px solid rgba(34, 197, 94, 0.3)",
+                                            padding: "4px 12px",
+                                            borderRadius: 8,
+                                            fontSize: 12,
+                                            background: "transparent",
+                                            border: "1px solid rgba(239, 68, 68, 0.3)",
+                                            color: "#ef4444",
+                                            cursor: "pointer",
+                                            opacity: disconnecting === conn.id ? 0.5 : 1,
                                         }}
                                     >
-                                        Active
-                                    </span>
-                                )}
-                                <span style={{ fontSize: "18px", transition: "transform 0.2s", transform: isExpanded ? "rotate(180deg)" : "none" }}>
-                                    ▾
-                                </span>
-                            </div>
-                        </button>
-
-                        {/* Expanded */}
-                        {isExpanded && (
-                            <div className="mt-5 pt-5" style={{ borderTop: "1px solid var(--clawt-border)" }}>
-                                {/* Current values (masked) */}
-                                {plat.credential_keys.length > 0 && (
-                                    <div className="mb-5 p-4 rounded-xl" style={{ background: "var(--clawt-bg)" }}>
-                                        <p className="text-xs font-medium mb-3" style={{ color: "var(--clawt-text-dim)" }}>
-                                            Current credentials (masked)
-                                        </p>
-                                        {Object.entries(plat.masked_credentials).map(([key, val]) => (
-                                            <div key={key} className="flex justify-between items-center mb-1" style={{ overflow: "hidden" }}>
-                                                <span className="text-xs flex-shrink-0" style={{ color: "var(--clawt-text-dim)" }}>{key}</span>
-                                                <code className="text-xs" style={{
-                                                    color: "var(--clawt-text-dim)",
-                                                    fontFamily: "monospace",
-                                                    overflow: "hidden",
-                                                    textOverflow: "ellipsis",
-                                                    whiteSpace: "nowrap",
-                                                    maxWidth: "60%",
-                                                    marginLeft: "8px",
-                                                }}>
-                                                    {val}
-                                                </code>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-
-                                {/* Input fields */}
-                                <div className="grid gap-3 mb-5">
-                                    {fields.map((field) => (
-                                        <div key={field.key}>
-                                            <label style={labelStyle}>{field.label}</label>
-                                            <input
-                                                type="password"
-                                                placeholder={field.placeholder}
-                                                value={form[field.key] || ""}
-                                                onChange={(e) =>
-                                                    setFormData((prev) => ({
-                                                        ...prev,
-                                                        [plat.platform]: { ...(prev[plat.platform] || {}), [field.key]: e.target.value },
-                                                    }))
-                                                }
-                                                style={inputStyle}
-                                            />
-                                        </div>
-                                    ))}
-                                </div>
-
-                                {/* Actions */}
-                                <div className="flex gap-3 flex-wrap">
-                                    <button
-                                        onClick={() => handleSave(plat.platform)}
-                                        disabled={saving === plat.platform}
-                                        style={btnPrimary}
-                                    >
-                                        {saving === plat.platform ? "Saving..." : "💾 Save Keys"}
+                                        {disconnecting === conn.id ? "..." : "Disconnect"}
                                     </button>
-                                    {plat.credential_keys.length > 0 && (
-                                        <>
-                                            <button
-                                                onClick={() => handleTest(plat.platform)}
-                                                disabled={testing === plat.platform}
-                                                style={btnSecondary}
-                                            >
-                                                {testing === plat.platform ? "Testing..." : "🔌 Test Connection"}
-                                            </button>
-                                            <button onClick={() => handleDelete(plat.platform)} style={btnDanger}>
-                                                🗑️ Remove
-                                            </button>
-                                        </>
-                                    )}
                                 </div>
-                            </div>
-                        )}
-                    </div>
-                );
-            })}
+                            ))}
+
+                            {/* Connect Button */}
+                            <button
+                                onClick={() => handleConnect(plat.platform)}
+                                disabled={!plat.configured || isConnecting}
+                                style={{
+                                    width: "100%",
+                                    padding: "10px 0",
+                                    borderRadius: 12,
+                                    fontSize: 14,
+                                    fontWeight: 600,
+                                    background: plat.configured
+                                        ? "linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(139, 92, 246, 0.15))"
+                                        : "var(--clawt-surface-2)",
+                                    border: `1px solid ${plat.configured ? "rgba(6, 182, 212, 0.3)" : "var(--clawt-border)"}`,
+                                    color: plat.configured ? "white" : "var(--clawt-text-dim)",
+                                    cursor: plat.configured ? "pointer" : "not-allowed",
+                                    opacity: isConnecting ? 0.7 : 1,
+                                    transition: "all 0.2s",
+                                }}
+                            >
+                                {isConnecting
+                                    ? "⏳ Connecting..."
+                                    : hasConnections
+                                        ? "➕ Add Another Account"
+                                        : plat.configured
+                                            ? "🔗 Connect"
+                                            : "⚠️ Not Configured"
+                                }
+                            </button>
+
+                            {/* Note */}
+                            {plat.note && (
+                                <p style={{ marginTop: 8, fontSize: 12, color: "var(--clawt-text-dim)", opacity: 0.7 }}>
+                                    ℹ️ {plat.note}
+                                </p>
+                            )}
+
+                            {/* Error */}
+                            {platConnections.some((c) => c.last_error) && (
+                                <p style={{ marginTop: 8, fontSize: 12, color: "#ef4444" }}>
+                                    ⚠️ {platConnections.find((c) => c.last_error)?.last_error}
+                                </p>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
         </div>
     );
 }
@@ -1161,9 +1215,166 @@ function AIModelsTab({ onToast }: { onToast: (msg: string, t: "success" | "error
                     <li><strong>Default:</strong> All agents use Ollama (free, runs locally on your machine)</li>
                     <li><strong>Add a provider key</strong> above to unlock cloud LLMs (OpenAI, Gemini, etc.)</li>
                     <li><strong>Assign per agent:</strong> Pick which provider + model each agent should use</li>
-                    <li><strong>Usage & billing:</strong> Cloud providers use your API key&apos;s plan/quota — check their dashboards</li>
+                    <li><strong>Usage &amp; billing:</strong> Cloud providers use your API key&apos;s plan/quota — check their dashboards</li>
                     <li><strong>Reset anytime:</strong> Click &quot;Reset&quot; to switch any agent back to Ollama</li>
                 </ol>
+            </div>
+        </div>
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Tab 5: WhatsApp Approval
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function WhatsAppApprovalTab({ onToast }: { onToast: (msg: string, t: "success" | "error") => void }) {
+    const [status, setStatus] = useState<WhatsAppStatus | null>(null);
+    const [approvals, setApprovals] = useState<WhatsAppApproval[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        async function load() {
+            setLoading(true);
+            try {
+                const [s, a] = await Promise.all([
+                    getWhatsAppStatus(),
+                    listWhatsAppApprovals(),
+                ]);
+                setStatus(s);
+                setApprovals(a);
+            } catch {
+                onToast("Failed to load WhatsApp status", "error");
+            } finally {
+                setLoading(false);
+            }
+        }
+        load();
+    }, [onToast]);
+
+    const statusBadge = (s: string) => {
+        const colors: Record<string, { bg: string; text: string }> = {
+            pending: { bg: "rgba(234,179,8,0.15)", text: "#eab308" },
+            approved: { bg: "rgba(34,197,94,0.15)", text: "#22c55e" },
+            rejected: { bg: "rgba(239,68,68,0.15)", text: "#ef4444" },
+            expired: { bg: "rgba(148,163,184,0.15)", text: "#94a3b8" },
+        };
+        const c = colors[s] || colors.expired;
+        return (
+            <span
+                className="text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase"
+                style={{ background: c.bg, color: c.text }}
+            >
+                {s}
+            </span>
+        );
+    };
+
+    if (loading) {
+        return (
+            <div className="glass-card p-8 text-center">
+                <p style={{ color: "var(--clawt-text-dim)" }}>Loading WhatsApp status…</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-6">
+            {/* Status Card */}
+            <div className="glass-card p-6">
+                <h3 className="text-lg font-bold mb-4">📲 WhatsApp Business API</h3>
+                <div
+                    className="p-4 rounded-xl mb-4 flex items-center gap-3"
+                    style={{
+                        background: status?.configured ? "rgba(34,197,94,0.1)" : "rgba(234,179,8,0.1)",
+                        border: `1px solid ${status?.configured ? "rgba(34,197,94,0.3)" : "rgba(234,179,8,0.3)"}`,
+                    }}
+                >
+                    <span className="text-2xl">{status?.configured ? "✅" : "⚠️"}</span>
+                    <div>
+                        <p className="text-sm font-semibold">
+                            {status?.configured ? "WhatsApp Connected" : "Not Configured"}
+                        </p>
+                        <p className="text-xs" style={{ color: "var(--clawt-text-dim)" }}>
+                            {status?.configured
+                                ? `Sending approvals to ${status.approval_phone}`
+                                : "Add WhatsApp credentials in your .env file to enable approval flow"}
+                        </p>
+                    </div>
+                </div>
+
+                {!status?.configured && (
+                    <div className="p-4 rounded-xl" style={{ background: "var(--clawt-surface)", border: "1px solid var(--clawt-border)" }}>
+                        <h4 className="text-sm font-semibold mb-3">🛠️ Setup Instructions</h4>
+                        <ol className="text-xs space-y-2" style={{ color: "var(--clawt-text-dim)", paddingLeft: 20, listStyle: "decimal" }}>
+                            <li>Go to <strong>Meta Business Suite</strong> → WhatsApp → API Setup</li>
+                            <li>Copy your <strong>Temporary Access Token</strong> and <strong>Phone Number ID</strong></li>
+                            <li>Add them to your <code>.env</code> file:</li>
+                        </ol>
+                        <pre className="mt-3 p-3 rounded-lg text-xs overflow-x-auto" style={{ background: "var(--clawt-surface-2)", color: "var(--clawt-primary-glow)" }}>
+                            {`WHATSAPP_ACCESS_TOKEN=your_token_here
+WHATSAPP_PHONE_NUMBER_ID=your_phone_id
+WHATSAPP_APPROVAL_PHONE=919876543210`}
+                        </pre>
+                    </div>
+                )}
+
+                {status?.configured && (
+                    <div className="p-4 rounded-xl" style={{ background: "rgba(6,182,212,0.05)", border: "1px solid rgba(6,182,212,0.2)" }}>
+                        <h4 className="text-sm font-semibold mb-2">💡 How it works</h4>
+                        <ul className="text-xs space-y-1" style={{ color: "var(--clawt-text-dim)" }}>
+                            <li>• Content ready for review gets sent as a WhatsApp message preview</li>
+                            <li>• Tap <strong>✅ Approve</strong> or <strong>❌ Reject</strong> directly in WhatsApp</li>
+                            <li>• Approved content automatically moves to publish queue</li>
+                            <li>• Approvals expire after 24 hours if no response</li>
+                        </ul>
+                    </div>
+                )}
+            </div>
+
+            {/* Approval History */}
+            <div className="glass-card p-6">
+                <h3 className="text-lg font-bold mb-4">
+                    📋 Approval History
+                    <span className="text-xs font-normal ml-2 px-2 py-0.5 rounded-full"
+                        style={{ background: "rgba(6,182,212,0.15)", color: "#06b6d4" }}>
+                        {approvals.length} total
+                    </span>
+                </h3>
+
+                {approvals.length === 0 ? (
+                    <div className="text-center py-8" style={{ color: "var(--clawt-text-dim)" }}>
+                        <p className="text-3xl mb-2">📭</p>
+                        <p className="text-sm">No approval requests sent yet</p>
+                    </div>
+                ) : (
+                    <div className="space-y-2">
+                        {approvals.map((a) => (
+                            <div key={a.id} className="p-3 rounded-lg flex items-center justify-between"
+                                style={{ background: "var(--clawt-surface)", border: "1px solid var(--clawt-border)" }}>
+                                <div className="flex items-center gap-3">
+                                    {statusBadge(a.status)}
+                                    <div>
+                                        <p className="text-xs font-medium">Content: {a.content_id.slice(0, 8)}…</p>
+                                        <p className="text-[10px]" style={{ color: "var(--clawt-text-dim)" }}>
+                                            Sent {a.sent_at ? new Date(a.sent_at).toLocaleString() : "—"}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    {a.responded_at ? (
+                                        <p className="text-[10px]" style={{ color: "var(--clawt-text-dim)" }}>
+                                            Responded {new Date(a.responded_at).toLocaleString()}
+                                        </p>
+                                    ) : a.expires_at ? (
+                                        <p className="text-[10px]" style={{ color: "var(--clawt-text-dim)" }}>
+                                            Expires {new Date(a.expires_at).toLocaleString()}
+                                        </p>
+                                    ) : null}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
         </div>
     );

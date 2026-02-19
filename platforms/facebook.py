@@ -6,7 +6,6 @@ import logging
 from typing import Any, Dict, List, Optional
 import httpx
 
-from config import settings
 from platforms.base_platform import BasePlatform
 
 logger = logging.getLogger(__name__)
@@ -17,11 +16,9 @@ GRAPH_API_BASE = "https://graph.facebook.com/v19.0"
 class FacebookClient(BasePlatform):
     """Facebook Graph API client for page management."""
 
-    def __init__(self, access_token: str = None, page_id: str = None):
-        super().__init__("Facebook")
-        # Use explicit params if provided, else fall back to .env config
-        self.access_token = access_token or settings.facebook_access_token
-        self.page_id = page_id or settings.facebook_page_id
+    def __init__(self, access_token: str, page_id: str):
+        super().__init__("Facebook", access_token)
+        self.page_id = page_id
 
     async def publish(self, text: str, media_url: Optional[str] = None) -> str:
         """Publish a post to a Facebook page."""

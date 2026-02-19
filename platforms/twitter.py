@@ -6,7 +6,6 @@ import logging
 from typing import Any, Dict, List, Optional
 import httpx
 
-from config import settings
 from platforms.base_platform import BasePlatform
 
 logger = logging.getLogger(__name__)
@@ -15,26 +14,14 @@ TWITTER_API_BASE = "https://api.twitter.com/2"
 
 
 class TwitterClient(BasePlatform):
-    """Twitter/X API v2 client."""
+    """Twitter/X API v2 client using OAuth 2.0 user tokens."""
 
-    def __init__(
-        self,
-        api_key: str = None,
-        api_secret: str = None,
-        access_token: str = None,
-        access_token_secret: str = None,
-        bearer_token: str = None,
-    ):
-        super().__init__("Twitter")
-        self.bearer_token = bearer_token or settings.twitter_bearer_token
-        self.api_key = api_key or settings.twitter_api_key
-        self.api_secret = api_secret or settings.twitter_api_secret
-        self.access_token = access_token or settings.twitter_access_token
-        self.access_token_secret = access_token_secret or settings.twitter_access_token_secret
+    def __init__(self, access_token: str):
+        super().__init__("Twitter", access_token)
 
     def _get_headers(self) -> Dict[str, str]:
         return {
-            "Authorization": f"Bearer {self.bearer_token}",
+            "Authorization": f"Bearer {self.access_token}",
             "Content-Type": "application/json",
         }
 
